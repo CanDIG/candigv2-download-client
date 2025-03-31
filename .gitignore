@@ -175,4 +175,3 @@ cython_debug/
 output.csv
 .vscode/settings.json
 .DS_Store
-uv.lock
