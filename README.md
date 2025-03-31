@@ -23,13 +23,13 @@ cd candigv2-download-client
 
 Once installed, you can run the tool in 2 ways:
 
-Quick Mode (no installation required):
+#### Quick Mode (no installation required):
 
 ```bash
 uv run candigv2-client
 ```
 
-Edit Mode (for persistent development):
+#### Edit Mode (for persistent development):
 
 ```bash
 uv venv
