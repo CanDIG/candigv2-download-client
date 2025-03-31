@@ -21,7 +21,7 @@ cd candigv2-download-client
 
 ## Usage
 
-Once installed, you can run the tool in 2 ways:
+You can run the tool in two ways:
 
 #### Quick Mode (no installation required):
 
