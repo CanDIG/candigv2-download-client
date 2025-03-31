@@ -1,0 +1,27 @@
+[project]
+name = "candigv2-download-client"
+version = "0.1.0"
+description = "CANDIGv2 download client"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx",
+    "pyjwt",
+    "rich",
+]
+
+[project.scripts]
+candigv2-client = "client.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
