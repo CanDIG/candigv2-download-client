@@ -17,16 +17,24 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 git clone https://github.com/CanDIG/candigv2-download-client.git
 cd candigv2-download-client
-uv venv
-source .venv/bin/activate
-uv pip install -e .
 ```
 
 ## Usage
 
-Once installed, you can run the tool using:
+Once installed, you can run the tool in 2 ways:
+
+Quick Mode (no installation required):
 
 ```bash
+uv run candigv2-client
+```
+
+Edit Mode (for persistent development):
+
+```bash
+uv venv
+source .venv/bin/activate
+uv pip install -e .
 candigv2-client
 ```
 
