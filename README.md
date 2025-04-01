@@ -26,7 +26,7 @@ You can run the tool in two ways:
 #### Quick Mode (no installation required):
 
 ```bash
-uv run candigv2-client
+uv run python -m src.client.main
 ```
 
 #### Edit Mode (for persistent development):
