@@ -23,13 +23,13 @@ cd candigv2-download-client
 
 You can run the tool in two ways:
 
-#### Quick Mode (no installation required):
+#### Quick Mode:
 
 ```bash
 uv run python -m src.client.main
 ```
 
-#### Edit Mode (for persistent development):
+#### Development Mode:
 
 ```bash
 uv venv
