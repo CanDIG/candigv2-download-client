@@ -172,6 +172,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-output.csv
 .vscode/settings.json
 .DS_Store
+clinical_downloads/*
+genomic_downloads/*
+.vscode/launch.json
