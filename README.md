@@ -55,7 +55,7 @@ python src/client/main.py [MODE] [OPTIONS...]
 
 *   `--base-url URL`: The base URL of the CANDIG federation server (Default: `http://candig.docker.internal:5080`).
 *   `--token TOKEN`: Authentication bearer token. Prompts if not provided.
-*   `--timeout SECONDS`: Request timeout in seconds (Default: 30 seconds).
+*   `--timeout SECONDS`: Request timeout in seconds (Default: 60 seconds).
 
 ### Mode 1: Clinical Data Download (`--clinical-download`)
 

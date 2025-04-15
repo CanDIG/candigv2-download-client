@@ -10,7 +10,7 @@ from typing import Dict, Any, Set, Optional, List
 
 # --- Configuration ---
 DEFAULT_BASE_URL = "http://candig.docker.internal:5080"
-DEFAULT_TIMEOUT = 30.0
+DEFAULT_TIMEOUT = 60.0
 CLINICAL_DATA_OUTPUT_DIR = "clinical_downloads"
 GENOMIC_OUTPUT_DIR = "genomic_downloads"
 
