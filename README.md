@@ -91,11 +91,11 @@ This mode downloads clinical data, optionally filtered.
     ```
 4.  **Fetch data filtered directly by primary site and specific sample IDs:**
     ```bash
-    python src/client/main.py --clinical-download --primary-site "Lung" "Brain" --token YOUR_TOKEN
+    python src/client/main.py --clinical-download --primary-site "Colon" "Brain" --token YOUR_TOKEN
     ```
 5.  **Fetch data filtered directly by drug name:**
     ```bash
-    python src/client/main.py --clinical-download --drug-name "Carboplatin" --token YOUR_TOKEN
+    python src/client/main.py --clinical-download --drug-name "Durvalumab" --token YOUR_TOKEN
     ```
 
 ### Mode 2: HTSget Genomic Reads Download (`--htsget-download`)
