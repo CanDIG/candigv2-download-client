@@ -102,16 +102,16 @@ This mode downloads clinical data, optionally filtered.
     ```
 5.  **Fetch data filtered directly by drug name:**
     ```bash
-    python src/client/main.py --clinical-download --drug-name "Durvalumab" --token YOUR_TOKEN
+    python src/client/main.py --clinical-download --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
     ```
 
-### Mode 2: HTSget Genomic Reads Download (`--htsget-download`)
+### Mode 2: HTSget Genomic Data Download (`--htsget-download`)
 
 This mode downloads genomic reads data for a single sample using the HTSget protocol.
 
 **Arguments:**
 
-*   `--htsget-sample-id`: **Required.** The Sample ID for which to download reads (e.g., `SAMPLE_001`).
+*   `--sample-id`: **Required.** The Sample ID for which to download reads (e.g., `SAMPLE_001`).
 *   `--htsget-output-dir DIR`: Directory to save the downloaded HTSget file (Default: `htsget_downloads`).
 *   `--htsget-url URL`: Specific base URL for the HTSget service. If not provided, it defaults to the `--base-url`.
 *   **Coordinate Filters (Optional - for downloading a specific region):**
