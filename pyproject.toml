@@ -1,7 +1,7 @@
 [project]
 name = "candigv2-download-client"
 version = "0.1.0"
-description = "CANDIGv2 download client"
+description = "CanDIGv2 download client"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

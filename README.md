@@ -1,12 +1,12 @@
-# CANDIGv2 Download Client
+# CanDIGv2 Download Client
 
-A command-line tool for exporting clinical data from CANDIG servers.
+A command-line tool for exporting clinical data from CanDIG servers.
 
 ## Overview
 
-The CANDIG Download Client provides a way to download clinical data from CANDIG federated networks. This tool allows users to:
+The CanDIG Download Client provides a way to download clinical data from CanDIG federated networks. This tool allows users to:
 
-- Connect to CANDIG servers with authentication
+- Connect to CanDIG servers with authentication
 - Select specific programs to download
 
 ## Install
@@ -53,7 +53,7 @@ python src/client/main.py [MODE] [OPTIONS...]
 
 ### Common Arguments
 
-*   `--base-url URL`: The base URL of the CANDIG federation server (Default: `http://candig.docker.internal:5080`).
+*   `--base-url URL`: The base URL of the CanDIG deployment (Default: `http://candig.docker.internal:5080`).
 *   `--token TOKEN`: Authentication bearer token. Prompts if not provided.
 *   `--timeout SECONDS`: Request timeout in seconds (Default: 60 seconds).
 
@@ -73,7 +73,14 @@ This mode downloads clinical data, optionally filtered.
     *   `--drug-name`: Filter by one or more systemic therapy drug names.
     *   `--program-id`: Filter by one or more program IDs.
 
-**Note:** If no filters are provided with `--clinical-download`, the script will attempt to download *all* clinical data available to user
+> [!Tip]
+> Filters must be individually quoted strings.
+
+> [!Note]
+> If no filters are provided with `--clinical-download`, the script will attempt to download *all* clinical data available to user.
+
+> [!CAUTION]
+> Filters must match those indicated in the data portal exactly and are case-sensitive.
 
 **Examples:**
 
@@ -91,7 +98,7 @@ This mode downloads clinical data, optionally filtered.
     ```
 4.  **Fetch data filtered directly by primary site and specific sample IDs:**
     ```bash
-    python src/client/main.py --clinical-download --primary-site "Colon" "Brain" --token YOUR_TOKEN
+    python src/client/main.py --clinical-download --primary-site "Colon" "Bronchus and lung" --token YOUR_TOKEN
     ```
 5.  **Fetch data filtered directly by drug name:**
     ```bash

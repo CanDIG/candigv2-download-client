@@ -412,7 +412,7 @@ def download_htsget_data(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="CANDIG data client: Download clinical data or genomic.",
+        description="CanDIG data client: Download clinical data or genomic.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     # --- Mode Selection ---
@@ -443,7 +443,7 @@ def main():
     htsget_group = parser.add_argument_group('HTSget Download Options (use with --htsget-download)')
     htsget_group.add_argument("--sample-id", help="Sample ID for HTSget download (e.g., SAMPLE_001). Use this specific flag for HTSget mode.")
 
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="CANDIG server base URL")
+    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="CanDIG server base URL")
     parser.add_argument("--token", help="Authentication bearer token (prompts if not provided)")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Request timeout in seconds")
     parser.add_argument("--output-dir", default=CLINICAL_DATA_OUTPUT_DIR, help="Directory to save Katsu CSV output files")
