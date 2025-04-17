@@ -74,9 +74,9 @@ python src/client/main.py [MODE] [OPTIONS...]
     *   `--filter-gene`: Filters variants to those found within the given gene id (e.g., `SLX9`)
     *   `--filter-coord`: Filters variants to those found within a particular genomic region (e.g. `chr1:10000-20000`)
 *   **Output type:**
-    *   `--all|-a`: If specified, downloads all clinical and variant data specified (Default behaviour) (will eventually include transcriptome matrices too)
-    *   `--clinical|-c`: If specified, downloads clinical data for filtered donors
-    *   `--variants|-v`: If specified, downloads variant data for filtered donors
+    *   `--all|-a`: If specified, downloads all clinical and variant data specified (will eventually include transcriptome matrices too)
+    *   `--clinical|-c`: If specified, downloads clinical data
+    *   `--variant|-v`: If specified, downloads variant data
     *   `--variant-format`: Must be one of `beacon` or `vcf`, returns the variants in the given format (Default=`vcf`)
     *   *Coming soon* `--matrix|-m`: If specified, downloads transcriptomic matrices for filtered donors 
 

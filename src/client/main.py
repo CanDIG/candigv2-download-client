@@ -6,13 +6,15 @@ import json
 import csv
 import os
 from typing import Dict, Any, Set, Optional, List
+from datetime import datetime
 
 
 # --- Configuration ---
 DEFAULT_BASE_URL = "http://candig.docker.internal:5080"
 DEFAULT_TIMEOUT = 60.0
-CLINICAL_DATA_OUTPUT_DIR = "clinical_downloads"
-GENOMIC_OUTPUT_DIR = "genomic_downloads"
+DATA_OUTPUT_DIR = f"{datetime.now().strftime("%Y%m%d%H%M")}-download"
+CLINICAL_DATA_OUTPUT_DIR = f"{DATA_OUTPUT_DIR}/clinical_downloads"
+VARIANT_OUTPUT_DIR = f"{DATA_OUTPUT_DIR}/variant_downloads"
 
 # Federation Endpoint
 FEDERATION_PATH = "/federation/v1/fanout"
@@ -40,6 +42,31 @@ def get_auth_token(token_arg: Optional[str]) -> Optional[str]:
     except EOFError:
         print("Error: Could not read token.")
         return None
+
+
+def parse_coord_string(coord_string: str):
+    chromosomes = [str(x) for x in list(range(1, 23))] + ['X', 'Y']
+    chr_chromosomes = ['chr' + x for x in chromosomes]
+    all_chromosomes = chromosomes + chr_chromosomes
+    try:
+        split_chrom = coord_string.split(":")
+        chrom = split_chrom[0]
+        split_pos = split_chrom[1].split("-")
+        start = split_pos[0]
+        end = split_pos[1]
+    except IndexError:
+        print(f"Coordinate string invalid: `{coord_string}` is not formatted correctly, please ensure it follows the pattern <chrom>:<start>-<end>.")
+        sys.exit()
+    if chrom not in all_chromosomes:
+        print("Chromosome invalid: indicate chromosome with [chr]1-22, X, Y")
+        sys.exit()
+    if int(start) > int(end):
+        print("Coordinates invalid: start coordinate cannot be larger than end coordinate. Please ensure it follows the pattern <chrom>:<start>-<end>.")
+        sys.exit()
+    return {"chrom": chrom,
+            "start": start,
+            "end": end}
+
 
 def build_gene_search_request_payload(
     gene_id: Optional[str] = None,
@@ -412,73 +439,58 @@ def download_htsget_data(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="CanDIG data client: Download clinical data or genomic.",
+        description="CanDIG data client: Download data from CanDIG.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    # --- Mode Selection ---
-    mode_group = parser.add_mutually_exclusive_group(required=True)
-    mode_group.add_argument(
-        "--clinical-download",
-        action='store_true',
-        help="Mode: Download clinical data. Can be filtered by gene search and clinical search (treatment, site, drug, program, sample ID)."
-    )
-    mode_group.add_argument(
-        "--htsget-download",
-        action='store_true',
-        help="Mode: Download data via HTSget using sample ID."
-    )
 
-    clinical_group = parser.add_argument_group('Clinical Download Options (use with --clinical-download)')
-    clinical_group.add_argument("--gene-id", help="Gene Search: Gene ID (e.g., SLX9...) to find biosamples first.")
-    parser.add_argument("--assembly", help="Assembly ID (e.g., hg38) [Used by HTSget]")
-    parser.add_argument("--chrom", help="Chromosome (e.g., 1, chr1) [Used by HTSget]")
-    parser.add_argument("--start", type=int, help="Start position [Used by HTSget]")
-    parser.add_argument("--end", type=int, help="End position [Used by HTSget]")
+    donor_group = parser.add_argument_group('Donor filtering Options')
+    donor_group.add_argument("--gene-id", help="Filter to donors with mutations in the given gene. (e.g. SLX9)")
+    donor_group.add_argument("--coord", help="Filter to donors with mutations in a specific chromosomal region (e.g. chr1:10000-20000)")
+    donor_group.add_argument("--treatment-type", nargs='+', help="Filter to donors treated with one or more treatment types, donors are returned if they match at least one of the types.")
+    donor_group.add_argument("--primary-site", nargs='+', help="Filter to donors diagnosed with tumours at one or more primary sites, donors are returned if they match at least one of the sites.")
+    donor_group.add_argument("--drug-name", nargs='+', help="Filter to donors treated with one or more systemic therapy drugs, donors are returned if they match at least one of the drug names.")
+    donor_group.add_argument("--program-id", nargs='+', help="Filter to donors by one or more program IDs.")
 
-    clinical_group.add_argument("--treatment-type", nargs='+', help="Katsu Filter: Filter by one or more treatment types.")
-    clinical_group.add_argument("--primary-site", nargs='+', help="Katsu Filter: Filter by one or more primary sites.")
-    clinical_group.add_argument("--drug-name", nargs='+', help="Katsu Filter: Filter by one or more systemic therapy drug names.")
-    clinical_group.add_argument("--program-id", nargs='+', help="Katsu Filter: Filter by one or more program IDs.")
+    variant_group = parser.add_argument_group('Variant filtering options')
+    variant_group.add_argument("--filter-variants", action="store_true", help="Filter the output variants by the same genomic filters as used for the donor filtering.")
+    variant_group.add_argument("--filter-gene", type=str, help="Filter the output variants by a specific gene.")
+    variant_group.add_argument("--filter-coord", type=str, help="Filter the output variants to those within a specific region (e.g. `chr1:10000-20000`).")
+    #variant_group.add_argument("--sample-id", help="Sample ID for HTSget download (e.g., SAMPLE_001). Use this specific flag for HTSget mode.")
 
-    htsget_group = parser.add_argument_group('HTSget Download Options (use with --htsget-download)')
-    htsget_group.add_argument("--sample-id", help="Sample ID for HTSget download (e.g., SAMPLE_001). Use this specific flag for HTSget mode.")
+    output_group = parser.add_argument_group('Output data options')
+    output_group.add_argument("-a", "--all", action="store_true", help="Download all available data types. Currently Clinical and Variants.")
+    output_group.add_argument("-c", "--clinical", action="store_true", help="Download clinical data")
+    output_group.add_argument("-v", "--variant", action="store_true", help="Download variant data")
+    output_group.add_argument("--variant-format", type=str, default="vcf", help="Return variants in beacon or vcf format")
+    #output_group.add_argument("-m", "--matrix", action="store_true", help="Download gene expression matrix")
 
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="CanDIG server base URL")
-    parser.add_argument("--token", help="Authentication bearer token (prompts if not provided)")
-    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Request timeout in seconds")
-    parser.add_argument("--output-dir", default=CLINICAL_DATA_OUTPUT_DIR, help="Directory to save Katsu CSV output files")
-    parser.add_argument("--htsget-output-dir", default=GENOMIC_OUTPUT_DIR, help="Directory to save HTSget download files")
+    configuration_group = parser.add_argument_group('Configuration options')
+    configuration_group.add_argument("--base-url", default=DEFAULT_BASE_URL, help="CanDIG server base URL")
+    configuration_group.add_argument("--token", help="Authentication bearer token (prompts if not provided)")
+    configuration_group.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Request timeout in seconds")
+    configuration_group.add_argument("--output-dir", default=DATA_OUTPUT_DIR, help="Directory to save output files")
+    #configuration_group.add_argument("--htsget-output-dir", default=GENOMIC_OUTPUT_DIR, help="Directory to save HTSget download files")
 
     args = parser.parse_args()
 
-    if args.clinical_download:
-        is_beacon_search_gene = args.gene_id is not None
-        is_beacon_search_coords = all([args.assembly, args.chrom, args.start is not None, args.end is not None])
-        has_some_coords = any([args.assembly, args.chrom, args.start is not None, args.end is not None])
-        is_beacon_search = is_beacon_search_gene or is_beacon_search_coords
+    is_beacon_search_gene = args.gene_id is not None
+    is_beacon_search_coords = args.coord is not None
+    if is_beacon_search_coords:
+        parse_coord_string(args.coord)
+    is_beacon_search = is_beacon_search_gene or is_beacon_search_coords
 
-        if is_beacon_search_gene and has_some_coords:
-            parser.error("Cannot use --gene-id with coordinate parameters (--assembly, --chrom, --start, --end) for Beacon search.")
-        if has_some_coords and not is_beacon_search_coords:
-            parser.error("If using coordinates for Beacon search, must provide all of --assembly, --chrom, --start, and --end.")
-        if args.sample_id:
-            parser.error("Cannot use --sample-id with --clinical-download mode.")
+    if args.filter_variants is not None:
+        if not is_beacon_search_gene and not is_beacon_search_coords:
+            parser.error("Variants cannot be filtered if no filters have been indicated. Specify filters with --gene-id or --coord or disable the --filter-variants option.")
 
+        if any([args.filter_gene is not None, args.filter_coord is not None]):
+            parser.error("Variants can only be filtered by one method, please choose --filter-variants, --filter-gene OR --filter-coord.")
 
-    elif args.htsget_download:
-        if not args.sample_id:
-            parser.error("If using --htsget-download, must provide --sample-id.")
+    if args.filter_gene is not None and args.filter_coord is not None:
+        parser.error("Variants can only be filtered by one method, please choose --filter-variants, --filter-gene OR --filter-coord.")
 
-        has_some_coords = any([args.chrom, args.start is not None, args.end is not None])
-        has_all_coords = all([args.chrom, args.start is not None, args.end is not None])
-        if has_some_coords and not has_all_coords:
-            parser.error("If providing coordinates for --htsget-download, must provide all of --chrom, --start, and --end.")
-
-        if any([args.gene_id, args.treatment_type, args.primary_site, args.drug_name, args.program_id]):
-            parser.error("Clinical download filters (--gene-id, --treatment-type, --primary-site, --drug-name, --program-id) are not used with --htsget-download mode.")
-        if args.assembly:
-            parser.error("--assembly is not directly used in the HTSget download URL construction but was provided.")
-
+    if args.filter_coord is not None:
+        parse_coord_string(args.filter_coord)
 
     # --- Get Token ---
     auth_token = get_auth_token(args.token)
@@ -490,10 +502,7 @@ def main():
 
     katsu_payload = None
 
- 
-    if args.clinical_download:
-        is_beacon_search = args.gene_id or all([args.assembly, args.chrom, args.start is not None, args.end is not None])
-
+    if args.all or args.clinical:
         if is_beacon_search:
             print("\n=== Mode: Clinical with Gene Search filters ===")
             # --- Stage 1: Beacon Query ---
