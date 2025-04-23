@@ -451,12 +451,6 @@ def main():
     donor_group.add_argument("--drug-name", nargs='+', help="Filter to donors treated with one or more systemic therapy drugs, donors are returned if they match at least one of the drug names.")
     donor_group.add_argument("--program-id", nargs='+', help="Filter to donors by one or more program IDs.")
 
-    variant_group = parser.add_argument_group('Variant filtering options')
-    variant_group.add_argument("--filter-variants", action="store_true", help="Filter the output variants by the same genomic filters as used for the donor filtering.")
-    variant_group.add_argument("--filter-gene", type=str, help="Filter the output variants by a specific gene.")
-    variant_group.add_argument("--filter-coord", type=str, help="Filter the output variants to those within a specific region (e.g. `chr1:10000-20000`).")
-    #variant_group.add_argument("--sample-id", help="Sample ID for HTSget download (e.g., SAMPLE_001). Use this specific flag for HTSget mode.")
-
     output_group = parser.add_argument_group('Output data options')
     output_group.add_argument("-a", "--all", action="store_true", help="Download all available data types. Currently Clinical and Variants.")
     output_group.add_argument("-c", "--clinical", action="store_true", help="Download clinical data")
