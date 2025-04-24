@@ -16,27 +16,6 @@ import genomics_helpers
 import clinical_helpers
 from router import CandigRouter, TestRunRouter
 
-
-# --- Configuration ---
-DEFAULT_BASE_URL = "http://candig.docker.internal:5080"
-DEFAULT_TIMEOUT = 60.0
-DATA_OUTPUT_DIR = f"{datetime.now().strftime("%Y%m%d%H%M")}-download"
-CLINICAL_DATA_OUTPUT_DIR = f"{DATA_OUTPUT_DIR}/clinical_downloads"
-VARIANT_OUTPUT_DIR = f"{DATA_OUTPUT_DIR}/variant_downloads"
-
-# Federation Endpoint
-FEDERATION_PATH = "/federation/v1/fanout"
-
-# htsget service config
-HTSGET_PATH = "/genomics/htsget/v1/reads/data/"
-BEACON_PATH = "beacon/v2/g_variants"
-HTSGET_SERIVCE = "htsget"
-
-# katsu service config
-KATSU_PATH = "v3/download/clinical_data/"
-KATSU_SERVICE = "katsu"
-
-
 # --- Helper Functions ---
 
 def get_auth_token(token_arg: Optional[str]) -> Optional[str]:
