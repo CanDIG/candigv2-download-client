@@ -17,6 +17,7 @@ candigv2-client = "client.main:main"
 dev = [
     "pytest",
     "ruff",
+    "pytest-dependency",
 ]
 
 [tool.ruff]
@@ -26,3 +27,8 @@ target-version = "py310"
 [tool.black]
 line-length = 88
 target-version = ["py310"]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "src"
+]
