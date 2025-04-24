@@ -42,7 +42,7 @@ def main():
     configuration_group.add_argument("--base-url", default=config.DEFAULT_BASE_URL, help="CanDIG server base URL")
     configuration_group.add_argument("--token", help="Authentication bearer token (prompts if not provided)")
     configuration_group.add_argument("--timeout", type=float, default=config.DEFAULT_TIMEOUT, help="Request timeout in seconds")
-    configuration_group.add_argument("--output-dir", default=config.DATA_OUTPUT_DIR, help="Directory to save output files")
+    configuration_group.add_argument("--output-dir", default=config.DATA_OUTPUT_DIR, help="Directory to save output files, directory is created if it doesn't already exist and is relative to where you execute the script.")
     configuration_group.add_argument("--demo-mode", action="store_true", help="Run in demo mode, this downloads synthetic clinical data so you can test filtering parameters and understand the format of clinical data.")
     configuration_group.add_argument("--dry-run", "-d", action="store_true", help="Run in dry run mode, no data is downloaded but the client tells you how much data would be downloaded given the provided parameters.")
     #configuration_group.add_argument("--htsget-output-dir", default=GENOMIC_OUTPUT_DIR, help="Directory to save HTSget download files")
@@ -145,7 +145,7 @@ def main():
             katsu_federation_results
         )
         if aggregated_clinical_data:
-            clinical_helpers.write_katsu_csvs(aggregated_clinical_data, args.output_dir)
+            clinical_helpers.write_katsu_csvs(aggregated_clinical_data, f"{args.output_dir}/{datetime.now().strftime("%Y%m%d%H%M")}-clinical_data")
             print(
                 f"\nClinical data CSVs written to: {os.path.abspath(args.output_dir)}"
             )

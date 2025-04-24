@@ -37,9 +37,9 @@ def build_clinical_request_payload(
         filter_descriptions.append(f"{len(program_ids)} Program IDs")
 
     if filter_descriptions:
-        print(f"Building Katsu request with filters: {', '.join(filter_descriptions)}...")
+        print(f"Building clinical data request with filters: {', '.join(filter_descriptions)}...")
     else:
-        print("Building Katsu request for ALL clinical data (no filters)...")
+        print("Building request for ALL clinical data (no filters)...")
 
     return {
         "path": config.CLINICAL_SERVICE_ENDPOINT,
@@ -86,15 +86,15 @@ def aggregate_katsu_results(
         print(f"Aggregated data from {sources_with_data} source(s).")
         return aggregated_results
     else:
-        print("No data found matching Katsu criteria across all sources.")
+        print("No data found matching clinical data criteria across all sources.")
         return None
 
 
 def write_katsu_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], output_dir: str):
     """Writes aggregated Katsu clinical data into multiple CSV files."""
-    print(f"\nWriting Katsu data to CSV files in '{output_dir}'...")
+    print(f"\nWriting clinical data to CSV files in '{output_dir}'...")
     if not clinical_payload:
-        print("No aggregated Katsu data provided to write.")
+        print("No aggregated clinical data provided to write.")
         return
 
     os.makedirs(output_dir, exist_ok=True)
@@ -148,6 +148,6 @@ def write_katsu_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], output_d
             print(f"An unexpected error occurred while writing {filename}: {e}", file=sys.stderr)
 
     if files_written > 0:
-        print(f"--- Finished writing {files_written} CSV file(s) from Katsu data ---")
+        print(f"--- Finished writing {files_written} CSV file(s) from clinical data ---")
     else:
         print("--- No CSV files were written (payload might have been empty or contained no processable data) ---")

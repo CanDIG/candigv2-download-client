@@ -6,8 +6,6 @@ DEFAULT_BASE_URL = "http://candig.docker.internal:5080"
 # DEFAULT_BASE_URL = "https://candig-demo.uhndata.io"
 DEFAULT_TIMEOUT = 60.0
 DATA_OUTPUT_DIR = "candig_downloads"
-CLINICAL_OUTPUT_DIR = f"{DATA_OUTPUT_DIR}/clinical_data"
-GENOMIC_OUTPUT_DIR = f"{DATA_OUTPUT_DIR}/genomic_data"
 
 # --- API Paths ---
 FEDERATION_PATH = "/federation/v1/fanout"
