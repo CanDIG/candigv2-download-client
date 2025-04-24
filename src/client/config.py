@@ -5,8 +5,9 @@
 DEFAULT_BASE_URL = "http://candig.docker.internal:5080"
 # DEFAULT_BASE_URL = "https://candig-demo.uhndata.io"
 DEFAULT_TIMEOUT = 60.0
-CLINICAL_OUTPUT_DIR = "clinical_downloads"
-GENOMIC_OUTPUT_DIR = "genomic_downloads"
+DATA_OUTPUT_DIR = "candig_downloads"
+CLINICAL_OUTPUT_DIR = f"{DATA_OUTPUT_DIR}/clinical_data"
+GENOMIC_OUTPUT_DIR = f"{DATA_OUTPUT_DIR}/genomic_data"
 
 # --- API Paths ---
 FEDERATION_PATH = "/federation/v1/fanout"
@@ -15,8 +16,7 @@ FEDERATION_PATH = "/federation/v1/fanout"
 GENOMICS_SERVICE_ENDPOINT = "/genomics/htsget/v1/reads/data/"
 GENOMICS_SERVICE = "htsget"
 BEACON_ENDPOINT = "beacon/v2/g_variants"        
-             
 
 # clinical service config
 CLINICAL_SERVICE_ENDPOINT = "v3/download/clinical_data/" 
-CLINICAL_SERVICE = "katsu"                    
+CLINICAL_SERVICE = "katsu"

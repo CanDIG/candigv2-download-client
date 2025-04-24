@@ -8,6 +8,7 @@ import sys
 from typing import Dict, Any, Optional, List
 import config 
 
+
 def build_clinical_request_payload(
     biosample_ids: Optional[List[str]] = None,
     treatment_types: Optional[List[str]] = None,
@@ -118,7 +119,6 @@ def write_katsu_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], output_d
         if not sorted_fieldnames: # Skip if somehow category has dicts but they are all empty
              print(f"Skipping category '{category}': No fields found in records.")
              continue
-
 
         print(f"Writing {len(valid_records)} records for category '{category}' to {filename}...")
         try:

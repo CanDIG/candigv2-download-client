@@ -69,10 +69,6 @@ python src/client/main.py [MODE] [OPTIONS...]
     *   `--drug-name`: Filter to donors treated with one or more systemic therapy drugs.
     *   `--primary-site`: Filter to donors with a tumour diagnosed in one or more primary sites.
     *   `--program-id`: Filter to donors from one or more program IDs.
-*   **Variant Filters:**
-    *   `--filter-variants`: If specified, uses the parameters specified in `Donor Filters` to restrict the variants returned to the gene or region specified
-    *   `--filter-gene`: Filters variants to those found within the given gene id (e.g., `SLX9`)
-    *   `--filter-coord`: Filters variants to those found within a particular genomic region (e.g. `chr1:10000-20000`)
 *   **Output type:**
     *   `--all|-a`: If specified, downloads all clinical and variant data specified (will eventually include transcriptome matrices too)
     *   `--clinical|-c`: If specified, downloads clinical data
@@ -111,27 +107,19 @@ python src/client/main.py [MODE] [OPTIONS...]
     ```bash
     python src/client/main.py -c -v --assembly hg38 --chrom 21 --start 10522300 --end 10530000 --token YOUR_TOKEN
     ```
-6.  **Fetch clinical and variant data where donors have mutations within the matching coordinates and filter the returned variants to those within that region:**
-    ```bash
-    python src/client/main.py -c -v --assembly hg38 --chrom 21 --start 10522300 --end 10530000 --filter-variants --token YOUR_TOKEN
-    ```
-7.  **Fetch clinical and variant data where donors have mutations within the matching coordinates and filter the returned variants to those within a different region:**
-    ```bash
-    python src/client/main.py -c -v --assembly hg38 --chrom 21 --start 10522300 --end 10530000 --filter-coord "chr1:0-1000000" --token YOUR_TOKEN
-    ```
-8.  **Fetch all available data for donors with primary site identified as either `Colon` or `Bronchus and Lung`:**
+6.  **Fetch all available data for donors with primary site identified as either `Colon` or `Bronchus and Lung`:**
     ```bash
     python src/client/main.py --primary-site "Colon" "Bronchus and lung" --token YOUR_TOKEN
     ```
-9.  **Fetch all available data for donors that were treated with the drug `Durvalumab` (allowing for multiple case-sensitive options):**
+7.  **Fetch all available data for donors that were treated with the drug `Durvalumab` (allowing for multiple case-sensitive options):**
     ```bash
     python src/client/main.py --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
     ```
-10.  **Download all variants for all donors from all authorized programs:**
+8.  **Download all variants for all donors from all authorized programs:**
      ```bash
      python src/client/main.py -v --token YOUR_TOKEN
      ```
-11.  **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
+9.  **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
      ```bash
      python src/client/main.py -v --filter-gene SLX9 --token YOUR_TOKEN
      ```
