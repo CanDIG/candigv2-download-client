@@ -8,6 +8,30 @@ from typing import Dict, Any, Optional, List, Set
 import config # Import config for service name/paths
 
 
+def parse_coord_string(coord_string: str):
+    chromosomes = [str(x) for x in list(range(1, 23))] + ['X', 'Y']
+    chr_chromosomes = ['chr' + x for x in chromosomes]
+    all_chromosomes = chromosomes + chr_chromosomes
+    try:
+        split_chrom = coord_string.split(":")
+        chrom = split_chrom[0]
+        split_pos = split_chrom[1].split("-")
+        start = split_pos[0]
+        end = split_pos[1]
+    except IndexError:
+        print(f"Coordinate string invalid: `{coord_string}` is not formatted correctly, please ensure it follows the pattern <chrom>:<start>-<end>.")
+        sys.exit()
+    if chrom not in all_chromosomes:
+        print("Chromosome invalid: indicate chromosome with [chr]1-22, X, Y")
+        sys.exit()
+    if int(start) > int(end):
+        print("Coordinates invalid: start coordinate cannot be larger than end coordinate. Please ensure it follows the pattern <chrom>:<start>-<end>.")
+        sys.exit()
+    return {"chrom": chrom,
+            "start": start,
+            "end": end}
+
+
 def build_beacon_request_payload(
     gene_id: Optional[str] = None,
     assembly: Optional[str] = None,

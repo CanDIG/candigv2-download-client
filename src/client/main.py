@@ -10,49 +10,11 @@ import sys
 import os
 from typing import Dict, Any, Set, Optional, List
 from datetime import datetime
-import getpass
+import auth
 import config
 import genomics_helpers
 import clinical_helpers
 from router import CandigRouter, TestRunRouter
-
-# --- Helper Functions ---
-
-def get_auth_token(token_arg: Optional[str]) -> Optional[str]:
-    """Gets the authentication token (simple version)."""
-    if token_arg:
-        print("Using token from command-line argument.")
-        return token_arg
-    try:
-        token = getpass.getpass("Enter your authentication token: ")
-        return token
-    except EOFError:
-        print("Error: Could not read token.")
-        return None
-
-
-def parse_coord_string(coord_string: str):
-    chromosomes = [str(x) for x in list(range(1, 23))] + ['X', 'Y']
-    chr_chromosomes = ['chr' + x for x in chromosomes]
-    all_chromosomes = chromosomes + chr_chromosomes
-    try:
-        split_chrom = coord_string.split(":")
-        chrom = split_chrom[0]
-        split_pos = split_chrom[1].split("-")
-        start = split_pos[0]
-        end = split_pos[1]
-    except IndexError:
-        print(f"Coordinate string invalid: `{coord_string}` is not formatted correctly, please ensure it follows the pattern <chrom>:<start>-<end>.")
-        sys.exit()
-    if chrom not in all_chromosomes:
-        print("Chromosome invalid: indicate chromosome with [chr]1-22, X, Y")
-        sys.exit()
-    if int(start) > int(end):
-        print("Coordinates invalid: start coordinate cannot be larger than end coordinate. Please ensure it follows the pattern <chrom>:<start>-<end>.")
-        sys.exit()
-    return {"chrom": chrom,
-            "start": start,
-            "end": end}
 
 
 def main():
@@ -90,13 +52,11 @@ def main():
     is_beacon_search_gene = args.gene_id is not None
     is_beacon_search_coords = args.coord is not None
     if is_beacon_search_coords:
-        beacon_search_coords = parse_coord_string(args.coord)
+        beacon_search_coords = genomics_helpers.parse_coord_string(args.coord)
     is_beacon_search = is_beacon_search_gene or is_beacon_search_coords
 
     # --- Get Token ---
-    auth_token = get_auth_token(args.token)
-
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    auth_token = auth.get_auth_token(args.token)
 
     # *** Select Router ***
     if args.demo_mode:

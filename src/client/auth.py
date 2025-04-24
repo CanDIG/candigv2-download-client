@@ -5,6 +5,7 @@ import getpass
 from typing import Optional
 import sys
 
+
 def get_auth_token(token_arg: Optional[str]) -> Optional[str]:
     """
     Gets the authentication token, either from the command-line argument
