@@ -51,83 +51,79 @@ python src/client/main.py [MODE] [OPTIONS...]
 *   You can provide the token using the `--token YOUR_TOKEN` argument.
 *   If `--token` is not provided, the script will prompt you to enter the token securely in the terminal
 
-### Common Arguments
+### Configuration options
 
 *   `--base-url URL`: The base URL of the CanDIG deployment (Default: `http://candig.docker.internal:5080`).
 *   `--token TOKEN`: Authentication bearer token. Prompts if not provided.
 *   `--timeout SECONDS`: Request timeout in seconds (Default: 60 seconds).
 
-### Mode 1: Clinical Data Download (`--clinical-download`)
-
-This mode downloads clinical data, optionally filtered.
+### Data Download options
 
 **Arguments:**
 
-*   `--output-dir DIR`: Directory to save the output CSV files (Default: `clinical_downloads`).
-*   **Gene Search Filters:**
-    *   `--gene-id`: Perform a gene search for samples associated with this Gene ID (e.g., `SLX9`) before fetching their clinical data.
-    *   `--assembly --chrom --start --end`: Perform a gene search for samples within these genomic coordinates (e.g., `--assembly hg38 --chrom 1 --start 10000 --end 20000`) before fetching their clinical data.
-*   **Clinical Data Filters:**
-    *   `--treatment-type`: Filter by one or more treatment types.
-    *   `--primary-site`: Filter by one or more primary sites.
-    *   `--drug-name`: Filter by one or more systemic therapy drug names.
-    *   `--program-id`: Filter by one or more program IDs.
+*   `--output-dir DIR`: Directory to save the output files (Default: `candig_downloads`).
+*   **Donor Filters:**
+    *   `--gene-id`: Filter to donors that have mutations in a particular gene (e.g., `SLX9`)
+    *   `--assembly --chrom --start --end`: Filter to donors that have mutations in a particular genomic region (e.g., `--assembly hg38 --chrom 1 --start 10000 --end 20000`)
+    *   `--treatment-type`: Filter to donors treated by one or more treatment types.
+    *   `--drug-name`: Filter to donors treated with one or more systemic therapy drugs.
+    *   `--primary-site`: Filter to donors with a tumour diagnosed in one or more primary sites.
+    *   `--program-id`: Filter to donors from one or more program IDs.
+*   **Output type:**
+    *   `--all|-a`: If specified, downloads all clinical and variant data specified (will eventually include transcriptome matrices too)
+    *   `--clinical|-c`: If specified, downloads clinical data
+    *   `--variant|-v`: If specified, downloads variant data
+    *   `--variant-format`: Must be one of `beacon` or `vcf`, returns the variants in the given format (Default=`vcf`)
+    *   *Coming soon* `--matrix|-m`: If specified, downloads transcriptomic matrices for filtered donors 
 
 > [!Tip]
 > Filters must be individually quoted strings.
 
 > [!Note]
-> If no filters are provided with `--clinical-download`, the script will attempt to download *all* clinical data available to user.
+> If no filters/args are provided, the program will attempt to download *all* data available to user.
 
 > [!CAUTION]
 > Filters must match those indicated in the data portal exactly and are case-sensitive.
 
 **Examples:**
 
-1.  **Fetch all clinical data:**
+1.  **Fetch all available data types for all programs you have authorization for:**
     ```bash
-    python src/client/main.py --clinical-download --token YOUR_TOKEN
+    python src/client/main.py --token YOUR_TOKEN
     ```
-2.  **Fetch data for samples matching a gene ID:**
+2.  **Fetch clinical data for donors with mutation in a gene ID:**
     ```bash
-    python src/client/main.py --clinical-download --gene-id SLX9 --token YOUR_TOKEN
+    python src/client/main.py --gene-id SLX9 --clinical --token YOUR_TOKEN
     ```
-3.  **Fetch data for samples matching coordinates:**
+3.  **Fetch clinical and variant data for donors with mutation in a gene ID:**
     ```bash
-    python src/client/main.py --clinical-download --assembly hg38 --chrom 21 --start 10522300 --end 10530000 --token YOUR_TOKEN
+    python src/client/main.py --gene-id SLX9 -c -v --token YOUR_TOKEN
     ```
-4.  **Fetch data filtered directly by primary site and specific sample IDs:**
+4.  **Fetch all available data for donors with mutation in a gene ID:**
     ```bash
-    python src/client/main.py --clinical-download --primary-site "Colon" "Bronchus and lung" --token YOUR_TOKEN
+    python src/client/main.py --gene-id SLX9 --token YOUR_TOKEN
     ```
-5.  **Fetch data filtered directly by drug name:**
+5.  **Fetch clinical and variant data where donors have mutations within the matching coordinates:**
     ```bash
-    python src/client/main.py --clinical-download --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
+    python src/client/main.py -c -v --assembly hg38 --chrom 21 --start 10522300 --end 10530000 --token YOUR_TOKEN
     ```
-
-### Mode 2: HTSget Genomic Data Download (`--htsget-download`)
-
-This mode downloads genomic reads data for a single sample using the HTSget protocol.
-
-**Arguments:**
-
-*   `--sample-id`: **Required.** The Sample ID for which to download reads (e.g., `SAMPLE_001`).
-*   `--htsget-output-dir DIR`: Directory to save the downloaded HTSget file (Default: `htsget_downloads`).
-*   `--htsget-url URL`: Specific base URL for the HTSget service. If not provided, it defaults to the `--base-url`.
-*   **Coordinate Filters (Optional - for downloading a specific region):**
-    *   `--chrom CHR --start START --end END`: Download only the region specified by chromosome, start, and end position.
-
-**Examples:**
-
-1.  **Download the whole reads file for a sample:**
+6.  **Fetch all available data for donors with primary site identified as either `Colon` or `Bronchus and Lung`:**
     ```bash
-    python src/client/main.py --htsget-download --sample-id LOCAL-test --token YOUR_TOKEN
+    python src/client/main.py --primary-site "Colon" "Bronchus and lung" --token YOUR_TOKEN
     ```
-2.  **Download a specific region for a sample:**
+7.  **Fetch all available data for donors that were treated with the drug `Durvalumab` (allowing for multiple case-sensitive options):**
     ```bash
-    python src/client/main.py --htsget-download --sample-id LOCAL-test --chrom chr1 --start 0 --end 1000000 --token YOUR_TOKEN
+    python src/client/main.py --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
     ```
+8.  **Download all variants for all donors from all authorized programs:**
+     ```bash
+     python src/client/main.py -v --token YOUR_TOKEN
+     ```
+9.  **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
+     ```bash
+     python src/client/main.py -v --filter-gene SLX9 --token YOUR_TOKEN
+     ```
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under GNU LESSER GENERAL PUBLIC LICENSE - see the [LICENSE](LICENSE) file for details.
