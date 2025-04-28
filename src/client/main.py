@@ -1,8 +1,5 @@
-#!/usr/bin/env python3
-# candig_cli.py
 """
-CanDIG data client: Download clinical data (optionally filtered by genomics)
-or download genomic data directly via HTSget. Uses API strategies for live/tests-run modes.
+CanDIG download client: Download clinical and genomic data.
 """
 
 import argparse
@@ -19,7 +16,7 @@ from router import CandigRouter, TestRunRouter
 
 def main():
     parser = argparse.ArgumentParser(
-        description="CanDIG data client: Download data from CanDIG.",
+        description="CanDIG download client: Download data from CanDIG.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
@@ -65,7 +62,7 @@ def main():
         headers = {}
         federation_url = "test-run-url"
     else:
-        #print("\n--- Live Mode Activated (Token provided) ---")
+        # print("\n--- Live Mode Activated (Token provided) ---")
         router = CandigRouter()
         headers = {"Content-Type": "application/json", "Accept": "application/json",
                    "Authorization": f"Bearer {auth_token}"}
