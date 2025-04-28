@@ -60,7 +60,7 @@ def main():
         # Use Test Run mode, pass the mock directory path
         router = TestRunRouter(mock_dir=args.mock_dir)
         headers = {}
-        federation_url = "test-run-url"
+        # federation_url = "test-run-url"
     else:
         # print("\n--- Live Mode Activated (Token provided) ---")
         router = CandigRouter()
@@ -68,10 +68,10 @@ def main():
                    "Authorization": f"Bearer {auth_token}"}
         federation_url = f"{args.base_url.rstrip('/')}{config.FEDERATION_PATH}"
 
-    katsu_payload = None
+    clinical_payload = None
 
     if args.all or args.clinical:
-        biosample_ids_for_katsu: Optional[List[str]] = None
+        biosample_ids_for_clinical: Optional[List[str]] = None
 
         if is_beacon_search:
             print("\n--- Step 1: Querying Beacon for relevant BioSamples ---")
@@ -98,51 +98,47 @@ def main():
 
             if beacon_results is None:
                 print(
-                    "Beacon request/simulation failed. Cannot proceed.", file=sys.stderr
+                    "Beacon request failed. Cannot proceed.", file=sys.stderr
                 )
                 sys.exit(1)
-            biosample_ids_for_katsu = genomics_helpers.extract_unique_biosample_ids(
+            biosample_ids_for_clinical = genomics_helpers.extract_unique_biosample_ids(
                 beacon_results
             )
-            if not biosample_ids_for_katsu:
+            if not biosample_ids_for_clinical:
                 print(
                     "No biosamples found matching the genomic search criteria. Exiting."
                 )
                 sys.exit(0)
-            elif not biosample_ids_for_katsu:
-                print(
-                    "[TEST RUN] Mock Beacon data did not yield any biosample IDs. Proceeding with Katsu request."
-                )
         else:
             print(
                 "\n--- Step 1: Skipping Genomic Filtering (no filters provided) ---"
             )
 
         print("\n--- Step 2: Querying Clinical Data ---")
-        katsu_payload = clinical_helpers.build_clinical_request_payload(
-            biosample_ids=biosample_ids_for_katsu,
+        clinical_payload = clinical_helpers.build_clinical_request_payload(
+            biosample_ids=biosample_ids_for_clinical,
             treatment_types=args.treatment_type,
             primary_sites=args.primary_site,
             drug_names=args.drug_name,
             program_ids=args.program_id,
         )
 
-        katsu_federation_results = router.execute_federation_call(
+        clinical_federation_results = router.execute_federation_call(
             federation_url=federation_url,
             headers=headers,
-            payload=katsu_payload,
+            payload=clinical_payload,
             timeout=args.timeout,
         )
-        if katsu_federation_results is None:
-            print("Clinical data request/simulation failed.", file=sys.stderr)
+        if clinical_federation_results is None:
+            print("Clinical data request failed.", file=sys.stderr)
             sys.exit(1)
 
         print("\n--- Step 3: Processing and Writing Clinical data Results ---")
-        aggregated_clinical_data = clinical_helpers.aggregate_katsu_results(
-            katsu_federation_results
+        aggregated_clinical_data = clinical_helpers.aggregate_clinical_results(
+            clinical_federation_results
         )
         if aggregated_clinical_data:
-            clinical_helpers.write_katsu_csvs(aggregated_clinical_data, f"{args.output_dir}/{datetime.now().strftime("%Y%m%d%H%M")}-clinical_data")
+            clinical_helpers.write_clinical_csvs(aggregated_clinical_data, f"{args.output_dir}/{datetime.now().strftime("%Y%m%d%H%M")}-clinical_data")
             print(
                 f"\nClinical data CSVs written to: {os.path.abspath(args.output_dir)}"
             )

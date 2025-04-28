@@ -1,6 +1,3 @@
-# katsu_utils.py
-"""Utilities for Katsu interactions."""
-
 import csv
 import json
 import os
@@ -16,24 +13,24 @@ def build_clinical_request_payload(
     drug_names: Optional[List[str]] = None,
     program_ids: Optional[List[str]] = None
 ) -> Dict[str, Any]:
-    """Builds the payload for the Katsu clinical data download request."""
-    katsu_target_payload: Dict[str, List[str]] = {}
+    """Builds the payload for the clinical data download request."""
+    clinical_target_payload: Dict[str, List[str]] = {}
     filter_descriptions = []
 
     if biosample_ids:
-        katsu_target_payload["biosample_id"] = biosample_ids
+        clinical_target_payload["biosample_id"] = biosample_ids
         filter_descriptions.append(f"{len(biosample_ids)} BioSample IDs")
     if treatment_types:
-        katsu_target_payload["treatment_type"] = treatment_types
+        clinical_target_payload["treatment_type"] = treatment_types
         filter_descriptions.append(f"{len(treatment_types)} Treatment Types")
     if primary_sites:
-        katsu_target_payload["primary_site"] = primary_sites
+        clinical_target_payload["primary_site"] = primary_sites
         filter_descriptions.append(f"{len(primary_sites)} Primary Sites")
     if drug_names:
-        katsu_target_payload["systemic_therapy_drug_name"] = drug_names
+        clinical_target_payload["systemic_therapy_drug_name"] = drug_names
         filter_descriptions.append(f"{len(drug_names)} Drug Names")
     if program_ids:
-        katsu_target_payload["program_id"] = program_ids
+        clinical_target_payload["program_id"] = program_ids
         filter_descriptions.append(f"{len(program_ids)} Program IDs")
 
     if filter_descriptions:
@@ -43,28 +40,28 @@ def build_clinical_request_payload(
 
     return {
         "path": config.CLINICAL_SERVICE_ENDPOINT,
-        "payload": katsu_target_payload,
+        "payload": clinical_target_payload,
         "method": "POST",
         "service": config.CLINICAL_SERVICE,
     }
 
 
-def aggregate_katsu_results(
-    katsu_federation_results: Optional[List[Dict[str, Any]]]
+def aggregate_clinical_results(
+    clinical_federation_results: Optional[List[Dict[str, Any]]]
 ) -> Optional[Dict[str, List[Dict[str, Any]]]]:
-    """Aggregates Katsu results from multiple federated sources."""
-    if not katsu_federation_results:
+    """Aggregates results from multiple federated sources."""
+    if not clinical_federation_results:
         return None
 
     aggregated_results: Dict[str, List[Dict[str, Any]]] = {}
     sources_with_data = 0
-    for katsu_source_response in katsu_federation_results:
-        if katsu_source_response.get("error"):
+    for clinical_source_response in clinical_federation_results:
+        if clinical_source_response.get("error"):
             # Error already logged by fetch_federation_data
-            print(f"Skipping source due to reported error: {katsu_source_response.get('source', 'Unknown Source')}")
+            print(f"Skipping source due to reported error: {clinical_source_response.get('source', 'Unknown Source')}")
             continue
 
-        source_results = katsu_source_response.get("results")
+        source_results = clinical_source_response.get("results")
         if not isinstance(source_results, dict):
             # print(f"Warning: Skipping source, 'results' is not a dictionary ({type(source_results)}).")
             continue # Silently skip if results isn't a dict or is empty
@@ -90,8 +87,8 @@ def aggregate_katsu_results(
         return None
 
 
-def write_katsu_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], output_dir: str):
-    """Writes aggregated Katsu clinical data into multiple CSV files."""
+def write_clinical_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], output_dir: str):
+    """Writes aggregated clinical data into multiple CSV files."""
     print(f"\nWriting clinical data to CSV files in '{output_dir}'...")
     if not clinical_payload:
         print("No aggregated clinical data provided to write.")
@@ -104,7 +101,7 @@ def write_katsu_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], output_d
         if not records_list: # Skip empty categories after aggregation
             continue
 
-        # Assume records are already filtered to be dicts by aggregate_katsu_results
+        # Assume records are already filtered to be dicts by aggregate_clinical_results
         valid_records = records_list
 
         # Sanitize category name for filename
