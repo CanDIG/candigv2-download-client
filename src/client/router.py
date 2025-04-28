@@ -26,12 +26,12 @@ class CandigRouter:
         """Makes a real POST request to the federation endpoint."""
         service = payload.get("service", "unknown")
         path = payload.get("path", "N/A")
-        print(f"Sending request to federation for {service} service ({path})...")
+        print(f"Sending request to federation service ({path})...")
         try:
             with httpx.Client(timeout=timeout) as client:
                 response = client.post(federation_url, headers=headers, json=payload)
                 response.raise_for_status()
-                print(f"Request for {service} successful (Status: {response.status_code}).")
+                print(f"Request successful (Status: {response.status_code}).")
                 return response.json()
         except httpx.HTTPStatusError as e:
             print(f"HTTP error during {service} request: {e.response.status_code}", file=sys.stderr)
@@ -51,16 +51,10 @@ class CandigRouter:
 class TestRunRouter:
     """Simulates API interactions using mock data."""
 
-    def __init__(self, mock_dir: str):
-        self.mock_dir = mock_dir
+    def __init__(self):
         print("\n******************************************************")
         print("*** TEST RUN MODE ACTIVATED (No token provided) ***")
-        print(f"*** API calls simulated using data from: {self.mock_dir} ***")
         print("******************************************************")
-        if not os.path.isdir(self.mock_dir):
-            print(f"\nError: Mock data directory not found: {self.mock_dir}", file=sys.stderr)
-            print("Please create the 'mock' directory and add sample JSON response files.", file=sys.stderr)
-            sys.exit(1)
 
     def execute_federation_call(
         self,
@@ -79,7 +73,7 @@ class TestRunRouter:
         else:
             mock_filename = f"{service}.json"
 
-        mock_filepath = os.path.join(self.mock_dir, mock_filename)
+        mock_filepath = os.path.join(config.MOCK_DIR, mock_filename)
 
         print(f"[TEST RUN] Simulating federation call for {service} service.")
         print(f"[TEST RUN] Attempting to load mock data from: {mock_filepath}")

@@ -3,9 +3,9 @@
 
 # --- General Settings ---
 DEFAULT_BASE_URL = "http://candig.docker.internal:5080"
-# DEFAULT_BASE_URL = "https://candig-demo.uhndata.io"
 DEFAULT_TIMEOUT = 60.0
 DATA_OUTPUT_DIR = "candig_downloads"
+MOCK_DIR = "mock"
 
 # --- API Paths ---
 FEDERATION_PATH = "/federation/v1/fanout"

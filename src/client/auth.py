@@ -15,7 +15,7 @@ def get_auth_token(token_arg: Optional[str]) -> Optional[str]:
         print("Using token from command-line argument.")
         return token_arg
     try:
-        token = getpass.getpass("Enter your authentication token (leave blank for test-run): ")
+        token = getpass.getpass("Enter your authentication token: ")
         return token if token else None
     except EOFError:
         print("\nError: Could not read token (EOF encountered).", file=sys.stderr)

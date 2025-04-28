@@ -11,7 +11,8 @@ def build_clinical_request_payload(
     treatment_types: Optional[List[str]] = None,
     primary_sites: Optional[List[str]] = None,
     drug_names: Optional[List[str]] = None,
-    program_ids: Optional[List[str]] = None
+    program_ids: Optional[List[str]] = None,
+    summary_only: bool = False
 ) -> Dict[str, Any]:
     """Builds the payload for the clinical data download request."""
     clinical_target_payload: Dict[str, List[str]] = {}
@@ -32,6 +33,9 @@ def build_clinical_request_payload(
     if program_ids:
         clinical_target_payload["program_id"] = program_ids
         filter_descriptions.append(f"{len(program_ids)} Program IDs")
+    if summary_only:
+        clinical_target_payload["summary_only"] = True
+        filter_descriptions.append("Summary Only")
 
     if filter_descriptions:
         print(f"Building clinical data request with filters: {', '.join(filter_descriptions)}...")
@@ -57,14 +61,13 @@ def aggregate_clinical_results(
     sources_with_data = 0
     for clinical_source_response in clinical_federation_results:
         if clinical_source_response.get("error"):
-            # Error already logged by fetch_federation_data
             print(f"Skipping source due to reported error: {clinical_source_response.get('source', 'Unknown Source')}")
             continue
 
         source_results = clinical_source_response.get("results")
         if not isinstance(source_results, dict):
             # print(f"Warning: Skipping source, 'results' is not a dictionary ({type(source_results)}).")
-            continue # Silently skip if results isn't a dict or is empty
+            continue
 
         data_found_in_source = False
         for category, records in source_results.items():
@@ -73,8 +76,6 @@ def aggregate_clinical_results(
                     aggregated_results[category] = []
                 aggregated_results[category].extend(r for r in records if isinstance(r, dict)) # Ensure records are dicts
                 data_found_in_source = True
-            # else: # Optional: Warn about non-list categories
-            #    print(f"Warning: Category '{category}' in source response is not a list, skipping.")
 
         if data_found_in_source:
             sources_with_data += 1
@@ -100,8 +101,6 @@ def write_clinical_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], outpu
     for category, records_list in clinical_payload.items():
         if not records_list: # Skip empty categories after aggregation
             continue
-
-        # Assume records are already filtered to be dicts by aggregate_clinical_results
         valid_records = records_list
 
         # Sanitize category name for filename
@@ -113,7 +112,7 @@ def write_clinical_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], outpu
         for record in valid_records:
             fieldnames_set.update(record.keys())
         sorted_fieldnames = sorted(list(fieldnames_set))
-        if not sorted_fieldnames: # Skip if somehow category has dicts but they are all empty
+        if not sorted_fieldnames:
              print(f"Skipping category '{category}': No fields found in records.")
              continue
 
@@ -123,16 +122,15 @@ def write_clinical_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], outpu
                 writer = csv.DictWriter(csvfile, fieldnames=sorted_fieldnames, extrasaction='ignore')
                 writer.writeheader()
                 for record in valid_records:
-                    # Process record: flatten dicts/lists to JSON strings for CSV compatibility
                     processed_record = {}
                     for key in sorted_fieldnames:
-                        value = record.get(key) # Use .get() for safety
+                        value = record.get(key)
                         if isinstance(value, (dict, list)):
                             try:
                                 processed_record[key] = json.dumps(value)
                             except TypeError:
                                 # print(f"Warning: Could not JSON serialize value for key '{key}' in {filename}. Writing as string.")
-                                processed_record[key] = str(value) # Fallback to string representation
+                                processed_record[key] = str(value)
                         elif value is not None:
                             processed_record[key] = value
                         else:
@@ -147,4 +145,4 @@ def write_clinical_csvs(clinical_payload: Dict[str, List[Dict[str, Any]]], outpu
     if files_written > 0:
         print(f"--- Finished writing {files_written} CSV file(s) from clinical data ---")
     else:
-        print("--- No CSV files were written (payload might have been empty or contained no processable data) ---")
+        print("--- No CSV files were written ---")
