@@ -172,6 +172,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-output.csv
 .vscode/settings.json
 .DS_Store
+candig_downloads/*
+.vscode/launch.json
+.idea

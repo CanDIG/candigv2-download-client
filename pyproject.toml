@@ -1,7 +1,7 @@
 [project]
 name = "candigv2-download-client"
 version = "0.1.0"
-description = "CANDIGv2 download client"
+description = "CanDIGv2 download client"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -17,6 +17,7 @@ candigv2-client = "client.main:main"
 dev = [
     "pytest",
     "ruff",
+    "pytest-dependency",
 ]
 
 [tool.ruff]
@@ -26,3 +27,8 @@ target-version = "py310"
 [tool.black]
 line-length = 88
 target-version = ["py310"]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "src"
+]
