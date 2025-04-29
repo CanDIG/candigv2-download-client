@@ -64,7 +64,7 @@ def aggregate_clinical_results(
             print(f"Skipping source due to reported error: {clinical_source_response.get('source', 'Unknown Source')}")
             continue
 
-        source_results = clinical_source_response.get("results")
+        source_results = clinical_source_response.get("results").get("data")
         if not isinstance(source_results, dict):
             # print(f"Warning: Skipping source, 'results' is not a dictionary ({type(source_results)}).")
             continue
