@@ -52,10 +52,10 @@ def build_beacon_request_payload(
         return None
 
     return {
-        "path": config.BEACON_PATH,
+        "path": config.BEACON_ENDPOINT,
         "payload": {"meta": {"apiVersion": "v2"}, "query": {"requestParameters": request_parameters}},
         "method": "POST",
-        "service": config.HTSGET_SERVICE,
+        "service": config.GENOMICS_SERVICE,
     }
 
 
