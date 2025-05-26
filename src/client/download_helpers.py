@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import shutil
 
 import config
 import genomics_helpers
@@ -244,13 +245,12 @@ def process_analysis_drs_objects(
     variants_dir: Path,
     show_progress: bool = True,
     is_dry_run: bool = False,
-) -> None:
-    """Process a AnalysisDRS object by getting its analysis and index files"""
-    if not analysis_drs_objs_response:
-        logger.warning("No AnalysisDRS objects to process")
-        return
-
+) -> bool:
+    """Process a AnalysisDRS object by getting its analysis and index files.
+    Returns True if any sequence variation data was processed, False otherwise."""
     logger.info(f"Processing {len(analysis_drs_objs_response)} AnalysisDRS objects")
+    
+    has_sequence_variation = False
 
     for analysis_drs_obj in tqdm(
         analysis_drs_objs_response,
@@ -258,6 +258,12 @@ def process_analysis_drs_objects(
         leave=False,
         position=0,
     ):
+        # Skip if not a sequence variation
+        if analysis_drs_obj.get("results", {}).get("metadata", {}).get("analysis_type", "unknown") != "sequence_variation":
+            logger.info("Skipping non-sequence variation analysis DRS object")
+            continue
+
+        has_sequence_variation = True
         contents = analysis_drs_obj.get("results", {}).get("contents", [])
         
         # Process analysis file
@@ -289,6 +295,8 @@ def process_analysis_drs_objects(
             show_progress=show_progress,
             is_dry_run=is_dry_run,
         )
+    
+    return has_sequence_variation
 
 
 def get_download_session_dir() -> Path:
@@ -417,21 +425,34 @@ def download_variant_data(
                         )
 
                         if analysis_drs_objs_response:
-                            has_data_to_download = True
-                            # Create directory only when we have data to download
-                            sample_dir = variants_dir / f"{program_id}-{sample_id}"
-                            sample_dir.mkdir(exist_ok=True)
-                            logger.info(
-                                f"Created directory for sample {program_sample_id} at {sample_dir}"
-                            )
+                            # Create a temporary directory for downloads
+                            temp_sample_dir = variants_dir / f"{program_id}-{sample_id}-temp"
+                            temp_sample_dir.mkdir(exist_ok=True)
                             
-                            process_analysis_drs_objects(
+                            has_data = process_analysis_drs_objects(
                                 analysis_drs_objs_response=analysis_drs_objs_response,
                                 headers=headers,
                                 federation_url=federation_url,
-                                variants_dir=sample_dir,
+                                variants_dir=temp_sample_dir,
                                 is_dry_run=is_dry_run,
                             )
+                            
+                            if has_data:
+                                # If we have sequence variation data, rename the temp directory to the final name
+                                final_sample_dir = variants_dir / f"{program_id}-{sample_id}"
+                                if final_sample_dir.exists():
+                                    shutil.rmtree(final_sample_dir)
+                                temp_sample_dir.rename(final_sample_dir)
+                                has_data_to_download = True
+                                logger.info(
+                                    f"Created directory for sample {program_sample_id} at {final_sample_dir} with sequence variation data"
+                                )
+                            else:
+                                # If no sequence variation data, remove the temp directory
+                                shutil.rmtree(temp_sample_dir)
+                                logger.info(
+                                    f"No sequence variation data found for sample {program_sample_id}, skipping directory creation"
+                                )
 
         if not has_data_to_download:
             logger.info(
