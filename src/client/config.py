@@ -1,20 +1,27 @@
-# config.py
 """Configuration constants for the CanDIG client."""
 
-# --- General Settings ---
+# ====================================
+# External Settings (User-editable)
+# ====================================
 DEFAULT_BASE_URL = "http://candig.docker.internal:5080"
-DEFAULT_TIMEOUT = 60.0
+TIMEOUT = 60.0
 DATA_OUTPUT_DIR = "candig_downloads"
-MOCK_DIR = "mock"
+LOG_LEVEL = 30
+DOWNLOAD_MAX_SIZE = 500_000_000  
 
-# --- API Paths ---
+# ====================================
+# Internal Settings (Do not edit)
+# ====================================
+
+# API Paths
 FEDERATION_PATH = "/federation/v1/fanout"
 
-# genomics service config
+# Genomics Service Config
 GENOMICS_SERVICE_ENDPOINT = "/genomics/htsget/v1/reads/data/"
 GENOMICS_SERVICE = "htsget"
-BEACON_ENDPOINT = "beacon/v2/g_variants"        
+BEACON_ENDPOINT = "beacon/v2/g_variants"
+DRS_ENDPOINT = "ga4gh/drs/v1/objects"
 
-# clinical service config
-CLINICAL_SERVICE_ENDPOINT = "v3/download/clinical_data/" 
+# Clinical Service Config
+CLINICAL_SERVICE_ENDPOINT = "v3/download/clinical_data/"
 CLINICAL_SERVICE = "katsu"
