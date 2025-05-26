@@ -70,6 +70,7 @@ python src/client/main.py [MODE] [OPTIONS...]
     *   `--clinical|-c`: If specified, downloads clinical data
     *   `--variant|-v`: If specified, downloads variant data
     *   `--log-level|--ll`: set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL). Default is WARNING (30)
+    *   `--dry-run|-d`: If specified, shows what would be downloaded (record counts, file sizes). Note that variant dry-run would still download the clinical data for filtering purpose.
     *   *Coming soon* `--matrix|-m`: If specified, downloads transcriptomic matrices for filtered donors 
 
 
