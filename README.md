@@ -43,7 +43,7 @@ Located in config.py where you can change DEFAULT_BASE_URL or DATA_OUTPUT_DIR
 
 ## Usage
 
-The script operates in one of two main modes, selected by a required argument: `--clinical-download` or `--htsget-download`.
+The script operates in one of two main modes, selected by a required argument: `--clinical` or `--variant`.
 
 ```bash
 python src/client/main.py [MODE] [OPTIONS...]
@@ -69,7 +69,9 @@ python src/client/main.py [MODE] [OPTIONS...]
     *   `--all|-a`: If specified, downloads all clinical and variant data specified (will eventually include transcriptome matrices too)
     *   `--clinical|-c`: If specified, downloads clinical data
     *   `--variant|-v`: If specified, downloads variant data
+    *   `--log-level|--ll`: set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL). Default is WARNING (30)
     *   *Coming soon* `--matrix|-m`: If specified, downloads transcriptomic matrices for filtered donors 
+
 
 > [!Tip]
 > Filters must be individually quoted strings.
