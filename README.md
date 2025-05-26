@@ -38,12 +38,13 @@ uv pip install -e .
 candigv2-client
 ```
 
-### Configuration options
-Located in config.py where you can change DEFAULT_BASE_URL or DATA_OUTPUT_DIR
+### Configure CanDIG instance
+
+Change the value of `DEFAULT_BASE_URL` to the CanDIG instance you will be downloading from in `src/client/config.py`.
 
 ## Usage
 
-The script operates in one of two main modes, selected by a required argument: `--clinical` or `--variant`.
+The program can download either clinical only, variant only, or all data a user is authorized for using the following arguments: `--clinical` or `--variant` or `--all`. The data downloaded can be further filtered using clinical and genomic parameters described in detail below.
 
 ```bash
 python src/client/main.py [MODE] [OPTIONS...]
@@ -54,7 +55,7 @@ python src/client/main.py [MODE] [OPTIONS...]
 *   You can provide the token using the `--token YOUR_TOKEN` argument.
 *   If `--token` is not provided, the script will prompt you to enter the token securely in the terminal
 
-### Data Download options
+### Options
 
 **Arguments:**
 
