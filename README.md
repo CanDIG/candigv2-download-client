@@ -89,13 +89,13 @@ python src/client/main.py [MODE] [OPTIONS...]
     ```bash
     python src/client/main.py -a --token YOUR_TOKEN
     ```
-2.  **Fetch clinical data for donors with mutation in a gene ID:**
+2.  **Fetch clinical data for donors with mutation in a gene ID with verbose logging:**
     ```bash
-    python src/client/main.py --gene-id SLX9 --clinical --token YOUR_TOKEN
+    python src/client/main.py -ll 10 -c --gene-id SLX9 --token YOUR_TOKEN
     ```
-3.  **Fetch clinical and variant data for donors with mutation in a gene ID:**
+3.  **Fetch variant data for donors with mutation in a gene ID in dry mode:**
     ```bash
-    python src/client/main.py --gene-id SLX9 -c -v --token YOUR_TOKEN
+    python src/client/main.py -d -v --gene-id SLX9 --token YOUR_TOKEN
     ```
 4.  **Fetch all available data for donors with mutation in a gene ID:**
     ```bash
@@ -113,13 +113,10 @@ python src/client/main.py [MODE] [OPTIONS...]
     ```bash
     python src/client/main.py --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
     ```
-8.  **Download all variants for all donors from all authorized programs:**
+
+8.  **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
      ```bash
-     python src/client/main.py -v --token YOUR_TOKEN
-     ```
-9.  **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
-     ```bash
-     python src/client/main.py -v --filter-gene SLX9 --token YOUR_TOKEN
+     python src/client/main.py -v --gene-id SLX9 --token YOUR_TOKEN
      ```
 
 ## License
