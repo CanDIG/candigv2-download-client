@@ -72,6 +72,7 @@ python src/client/main.py [MODE] [OPTIONS...]
     *   `--variant|-v`: If specified, downloads variant data
     *   `--log-level|-ll`: set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL). Default is WARNING (30)
     *   `--dry-run|-d`: If specified, shows what would be downloaded (record counts, file sizes). Note that variant dry-run would still download the clinical data for filtering purpose.
+    * `--resume|-r` resume download
     *   *Coming soon* `--matrix|-m`: If specified, downloads transcriptomic matrices for filtered donors 
 
 
@@ -112,19 +113,18 @@ python src/client/main.py [MODE] [OPTIONS...]
     ```
 7.  **Fetch all available data for donors that were treated with the drug `Durvalumab` (allowing for multiple case-sensitive options):**
     ```bash
-    python src/client/main.py --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
+    python src/client/main.py -a --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
     ```
 
 8.  **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
      ```bash
      python src/client/main.py -v --gene-id SLX9 --token YOUR_TOKEN
      ```
+9. **Resume download
+```
+python src/client/main.py -r candig_downloads/{session_id} --token YOUR_TOKEN
+```
 
 ## License
 
 This project is licensed under GNU LESSER GENERAL PUBLIC LICENSE - see the [LICENSE](LICENSE) file for details.
-
-```
-python src/client/main.py --gene-id TPTE --clinical
-```
-
