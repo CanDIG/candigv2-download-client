@@ -8,6 +8,8 @@ dependencies = [
     "httpx",
     "pyjwt",
     "rich",
+    "tqdm",
+    "colorama",
 ]
 
 [project.scripts]

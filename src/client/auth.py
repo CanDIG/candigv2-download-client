@@ -1,9 +1,8 @@
-# auth.py
-"""Handles authentication token retrieval."""
-
 import getpass
+import logging
 from typing import Optional
-import sys
+
+logger = logging.getLogger(__name__)
 
 
 def get_auth_token(token_arg: Optional[str]) -> Optional[str]:
@@ -12,14 +11,14 @@ def get_auth_token(token_arg: Optional[str]) -> Optional[str]:
     or by prompting the user.
     """
     if token_arg:
-        print("Using token from command-line argument.")
+        logger.info("Using token from command-line argument.")
         return token_arg
     try:
         token = getpass.getpass("Enter your authentication token: ")
         return token if token else None
     except EOFError:
-        print("\nError: Could not read token (EOF encountered).", file=sys.stderr)
+        logger.error("Could not read token (EOF encountered).")
         return None
     except Exception as e:
-        print(f"\nError reading token: {e}", file=sys.stderr)
+        logger.error(f"Error reading token: {e}")
         return None
