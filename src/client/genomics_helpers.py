@@ -110,9 +110,6 @@ def build_file_drs_request_payload(
 def extract_unique_program_sample_ids_from_beacon_results(
     beacon_results: Optional[List[Dict[str, Any]]],
 ) -> List[str]:
-    if not beacon_results:
-        logger.warning("No Beacon results received to extract biosamples from.")
-        return []
     unique_samples: Set[str] = set()
     logger.info("Extracting biosample_ids from Beacon results...")
     processed_sources = 0
