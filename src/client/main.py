@@ -1,23 +1,23 @@
 import argparse
 import logging
 import sys
-from typing import List, Optional
+from pathlib import Path
+from typing import Dict, List, Optional
 
 import auth
 import clinical_helpers
 import config
-import genomics_helpers
 import download_helpers
-from tqdm import tqdm
+import genomics_helpers
 from colorama import Fore, Style, init
+from tqdm import tqdm
 
 init()
-
 logger = logging.getLogger(__name__)
 
+
+# --- Logging Setup ---
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter that adds colors to log messages based on level."""
-    
     COLORS = {
         logging.DEBUG: Fore.BLUE,
         logging.INFO: Fore.GREEN,
@@ -27,59 +27,210 @@ class ColoredFormatter(logging.Formatter):
     }
 
     def format(self, record):
-        # For WARNING and ERROR levels, color the entire message
-        if record.levelno in (logging.WARNING, logging.ERROR, logging.CRITICAL):
-            color = self.COLORS[record.levelno]
+        color = self.COLORS.get(record.levelno)
+        if color:
             record.msg = f"{color}{record.msg}{Style.RESET_ALL}"
             record.levelname = f"{color}{record.levelname}{Style.RESET_ALL}"
-        else:
-            # For other levels, only color the level name
-            if record.levelno in self.COLORS:
-                record.levelname = f"{self.COLORS[record.levelno]}{record.levelname}{Style.RESET_ALL}"
         return super().format(record)
 
-def setup_logging(log_level: int = config.LOG_LEVEL) -> None:
-    """Set up logging configuration based on numeric log level.
 
-    Args:
-        log_level: Numeric log level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)
-    """
+def setup_logging(log_level: int = config.LOG_LEVEL) -> None:
     log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
     formatter = ColoredFormatter(log_format)
-    
-    # Create console handler with the custom formatter
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
-    
-    # Configure root logger
     root_logger = logging.getLogger()
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
     root_logger.setLevel(log_level)
     root_logger.addHandler(console_handler)
 
+
+# --- Helper : Session Setup ---
+def _setup_session_download(resume_path_str: Optional[str]) -> Path:
+    if resume_path_str:
+        session_dir = Path(resume_path_str)
+        if not session_dir.is_dir():
+            logger.critical(f"Resume directory {session_dir} does not exist. Exiting.")
+            sys.exit(1)
+        print(f"Resuming download session in: {session_dir}")
+    else:
+        session_dir = download_helpers.get_download_session_dir()
+        print(f"New download folder created at: {session_dir}")
+
+    run_log_file_path = session_dir / "run_command.log"
+    # Filter out token from argv
+    filtered_argv = [
+        arg
+        for i, arg in enumerate(sys.argv)
+        if arg != "--token"
+        and (i == 0 or sys.argv[i - 1] != "--token")
+        and not arg.startswith("--token=")
+    ]
+    with open(run_log_file_path, "w") as f:
+        f.write(f"Run command: {' '.join(filtered_argv)}\n")
+    logger.info(f"Run command details saved to {run_log_file_path}")
+    return session_dir
+
+
+# --- Helper: Beacon Search ---
+def _fetch_beacon_biosample_ids(
+    args: argparse.Namespace, headers: Dict[str, str], federation_url: str
+) -> List[str]:
+    logger.info("Applying genomic filters via Beacon search...")
+    beacon_payload = None
+    if args.gene_id:
+        beacon_payload = genomics_helpers.build_beacon_request_payload(
+            gene_id=args.gene_id, assembly="hg38"
+        )
+    elif args.coord:
+        parsed_coord = genomics_helpers.parse_coord_string(args.coord)
+        if not parsed_coord:
+            logger.critical(f"Invalid coordinate string: {args.coord}. Exiting.")
+            sys.exit(1)
+        beacon_payload = genomics_helpers.build_beacon_request_payload(
+            assembly="hg38",
+            chrom=parsed_coord["chrom"],
+            start=parsed_coord["start"],
+            end=parsed_coord["end"],
+        )
+
+    # Call federation nodes with beacon payload
+    beacon_results = download_helpers.execute_federation_call(
+        federation_url, headers, beacon_payload
+    )
+    if beacon_results is None:
+        logger.critical("Beacon request failed (API error or no response). Exiting.")
+        sys.exit(1)
+
+    program_sample_ids = (
+        genomics_helpers.extract_unique_program_sample_ids_from_beacon_results(
+            beacon_results
+        )
+    )
+    if not program_sample_ids:
+        logger.critical("Beacon search yielded 0 results. Exiting.")
+        sys.exit(1)
+
+    logger.info(f"Beacon search yielded {len(program_sample_ids)} sample IDs.")
+    return program_sample_ids
+
+
+# --- Helper: Clinical Data ---
+def _process_clinical_data(
+    args: argparse.Namespace,
+    headers: Dict[str, str],
+    federation_url: str,
+    session_dir: Path,
+    initial_biosample_ids: Optional[List[str]],
+) -> List[str]:
+    print("Processing clinical data ...")
+    clinical_payload = clinical_helpers.build_clinical_request_payload(
+        biosample_ids=initial_biosample_ids,
+        treatment_types=args.treatment_type,
+        primary_sites=args.primary_site,
+        drug_names=args.drug_name,
+        program_ids=args.program_id,
+        summary_only=args.dry_run,
+    )
+
+    with tqdm(
+        desc="Fetching clinical data",
+        unit="source",
+        disable=args.dry_run or not logger.isEnabledFor(logging.INFO),
+    ) as pbar:
+        # Call federation nodes with clinical payload
+        clinical_results = download_helpers.execute_federation_call(
+            federation_url,
+            headers,
+            clinical_payload,
+            progress_callback=lambda: pbar.update(1),
+        )
+
+    if clinical_results is None:
+        logger.critical(
+            "Clinical data request failed (API error or no response). Exiting."
+        )
+        sys.exit(1)
+
+    aggregated_data = clinical_helpers.aggregate_clinical_results(
+        clinical_results, is_clinical_dry_run=args.dry_run
+    )
+
+    if args.dry_run:
+        print("\nClinical Data Summary (Dry Run):")
+        if "summary" in aggregated_data and aggregated_data["summary"]:
+            print(f"  Message: {aggregated_data['summary'].get('message', 'N/A')}")
+            print("  Record Counts:")
+            for cat, count in (
+                aggregated_data["summary"].get("record_counts", {}).items()
+            ):
+                print(f"    {cat}: {count}")
+        else:
+            print(
+                "  No summary information available in dry run results for clinical data."
+            )
+    elif not args.dry_run:
+        clinical_dir = session_dir / "clinical_data"
+        clinical_dir.mkdir(exist_ok=True)
+        clinical_helpers.write_clinical_csvs(aggregated_data, str(clinical_dir))
+        print(f"Clinical data saved to: {clinical_dir}")
+
+    final_biosample_ids = (
+        clinical_helpers.extract_unique_program_sample_ids_from_clinical_data(
+            aggregated_data
+        )
+    )
+
+    logger.info(
+        f"Clinical processing yielded {len(final_biosample_ids)} sample IDs for subsequent steps."
+    )
+    return final_biosample_ids
+
+
+# --- Helper: Variant Data Processing ---
+def _process_variant_data(
+    args: argparse.Namespace,
+    headers: Dict[str, str],
+    federation_url: str,
+    session_dir: Path,
+    ids_for_new_metadata: Optional[List[str]],
+):
+    print("\nProcessing variant data...")
+    download_helpers.run_variant_download_pipeline(
+        program_sample_ids=ids_for_new_metadata,
+        federation_headers=headers,
+        download_headers=headers,
+        federation_url=federation_url,
+        is_dry_run=args.dry_run,
+        session_dir=session_dir,
+    )
+    print(f"Variant data saved to: {session_dir / 'variant_data'}")
+
+
 def main():
-    
     # ===================================================
     #                   CLI PARSER SETUP
     # ===================================================
-
     parser = argparse.ArgumentParser(
-        description="CanDIG download client: Download data from CanDIG.",
+        description="CanDIG download client.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
     # ===== Logging Configuration =====
     parser.add_argument(
-        "-ll","--log-level",
+        "-ll",
+        "--log-level",
         type=int,
         default=logging.WARNING,
-        help="Set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)",
+        help="Logging level (10=DEBUG ... 50=CRITICAL)",
     )
 
     # ===== Data Download Options =====
     # Controls what data will be downloaded
     output_group = parser.add_argument_group("Output data options")
     output_group.add_argument(
-        "-a", "--all", action="store_true", help="Download all available data types"
+        "-a", "--all", action="store_true", help="Download all data types"
     )
     output_group.add_argument(
         "-c", "--clinical", action="store_true", help="Download clinical data"
@@ -91,48 +242,31 @@ def main():
     # ===== Donor Filtering Options =====
     # Filters to select specific donors based on various criteria
     donor_group = parser.add_argument_group("Donor filtering Options")
+    donor_group.add_argument("--gene-id", help="Filter by gene ID (e.g., SLX9)")
     donor_group.add_argument(
-        "--gene-id",
-        help="Filter to donors with mutations in the given gene. (e.g. SLX9)",
+        "--coord", help="Filter by region (e.g., chr1:10000-20000)"
     )
     donor_group.add_argument(
-        "--coord",
-        help="Filter to donors with mutations in a specific chromosomal region (e.g. chr1:10000-20000)",
+        "--treatment-type", nargs="+", help="Filter by treatment types"
     )
     donor_group.add_argument(
-        "--treatment-type",
-        nargs="+",
-        help="Filter to donors treated with one or more treatment types, donors are returned if they match at least one of the types.",
+        "--primary-site", nargs="+", help="Filter by primary tumor sites"
     )
-    donor_group.add_argument(
-        "--primary-site",
-        nargs="+",
-        help="Filter to donors diagnosed with tumours at one or more primary sites, donors are returned if they match at least one of the sites.",
-    )
-    donor_group.add_argument(
-        "--drug-name",
-        nargs="+",
-        help="Filter to donors treated with one or more systemic therapy drugs, donors are returned if they match at least one of the drug names.",
-    )
-    donor_group.add_argument(
-        "--program-id", nargs="+", help="Filter to donors by one or more program IDs."
-    )
+    donor_group.add_argument("--drug-name", nargs="+", help="Filter by drug names")
+    donor_group.add_argument("--program-id", nargs="+", help="Filter by program IDs")
 
     # ===== Authentication and Configuration =====
     # Settings for authentication and client behavior
     configuration_group = parser.add_argument_group("Configuration options")
+    configuration_group.add_argument("--token", help="Authentication bearer token")
     configuration_group.add_argument(
-        "--token", help="Authentication bearer token (prompts if not provided)"
+        "-d", "--dry-run", action="store_true", help="Dry run mode"
     )
     configuration_group.add_argument(
-        "--dry-run",
-        "-d",
-        action="store_true",
-        help="Run in dry run mode, no data is downloaded but the client tells you how much data would be downloaded given the provided parameters.",
+        "-r", "--resume", type=str, help="Path to resume download session"
     )
 
     args = parser.parse_args()
-
     # ===================================================
     #                   DATA PROCESSING
     # ===================================================
@@ -146,163 +280,104 @@ def main():
     # ===== Setup Logging =====
     setup_logging(args.log_level)
 
-    # ===== Dry Run Warning =====
     if args.dry_run:
         logger.warning("DRY RUN MODE ENABLED")
 
-    # ===== Validate Input Arguments =====
-    # Require at least one output data option
-    if not (args.all or args.clinical or args.variant):
-        parser.error(
-            "You must specify at least one output data option:\n"
-            "  -a, --all      Download all available data types\n"
-            "  -c, --clinical Download clinical data\n"
-            "  -v, --variant  Download variant data"
-        )
+    # ===== Resume Mode =====
+    if args.resume:
+        # Disallowed arguments when --resume is active
+        disallowed_flags_with_resume = []
+        if args.all:
+            disallowed_flags_with_resume.append("--all")
+        if args.clinical:
+            disallowed_flags_with_resume.append("--clinical")
 
-    # Validate that gene_id and coord are not used together
-    if args.gene_id is not None and args.coord is not None:
-        parser.error(
-            "Cannot use both --gene-id and --coord parameters together.\n"
-            "Please specify either --gene-id or --coord, but not both."
-        )
+        filter_arg_names = [
+            "gene_id",
+            "coord",
+            "treatment_type",
+            "primary_site",
+            "drug_name",
+            "program_id",
+        ]
+        for arg_name in filter_arg_names:
+            if getattr(args, arg_name) is not None:
+                disallowed_flags_with_resume.append(f"--{arg_name.replace('_', '-')}")
 
-    # ===== Get Token =====
-    auth_token = auth.get_auth_token(args.token)
-    if auth_token is None:
-        logger.error("No token provided. Exiting.")
+        if disallowed_flags_with_resume:
+            parser.error(
+                f"With --resume, data type flags (except implicitly --variant) or filter arguments "
+                f"({', '.join(disallowed_flags_with_resume)}) are not allowed. "
+                "Resume mode only accepts --log-level and --token."
+            )
+
+        # Resume mode should be use for variant download only
+        args.variant = True
+        args.clinical = False
+        args.all = False
+        for arg_name in filter_arg_names:
+            setattr(args, arg_name, None)
+
+    # ===== Normal Mode =====
+    elif not (args.all or args.clinical or args.variant):
+        parser.error("Specify at least one data type (-a, -c, -v) or use --resume.")
+
+    if args.gene_id and args.coord:
+        parser.error("Cannot use both --gene-id and --coord. Exiting.")
+
+    # ===== Authentication & Session =====
+    auth_token = auth.get_auth_token(args.token)  # Prompts if args.token is None
+    if not auth_token:
+        logger.critical(
+            "Authentication token is required and was not provided. Exiting."
+        )
         sys.exit(1)
     headers = {
+        "Authorization": f"Bearer {auth_token}",
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Authorization": f"Bearer {auth_token}",
     }
-
-    # ===== Setup =====
+    session_dir = _setup_session_download(args.resume)
     federation_url = f"{config.DEFAULT_BASE_URL.rstrip('/')}{config.FEDERATION_PATH}"
-    clinical_payload = None
-    program_sample_ids: Optional[List[str]] = None
 
-    # ===== Create Download Session Directory =====
-    session_dir = download_helpers.get_download_session_dir()
-    print(f"Download session folder created at: {session_dir}")
-
-    # ===== Beacon Search =====
-    is_beacon_search_gene = args.gene_id is not None
-    is_beacon_search_coords = args.coord is not None
-    if is_beacon_search_coords:
-        beacon_search_coords = genomics_helpers.parse_coord_string(args.coord)
-        logger.debug(f"Parsed coordinate string: {beacon_search_coords}")
-    is_beacon_search = is_beacon_search_gene or is_beacon_search_coords
-    if is_beacon_search:
-        if is_beacon_search_gene:
-            logger.debug(f"Beacon search with gene_id: {args.gene_id}")
-            beacon_payload = genomics_helpers.build_beacon_request_payload(
-                gene_id=args.gene_id,
-                assembly="hg38",
-            )
-        elif is_beacon_search_coords:
-            logger.debug(f"Beacon search with coordinates: {args.coord}")
-            beacon_payload = genomics_helpers.build_beacon_request_payload(
-                assembly="hg38",
-                chrom=beacon_search_coords["chrom"],
-                start=beacon_search_coords["start"],
-                end=beacon_search_coords["end"],
+    # --- Biosample IDs ---
+    new_biosample_ids: Optional[List[str]] = None
+    if not args.resume:
+        if args.gene_id or args.coord:
+            new_biosample_ids = _fetch_beacon_biosample_ids(
+                args, headers, federation_url
             )
 
-        if not beacon_payload:
-            logger.error("No beacon payload built. Exiting.")
-            sys.exit(1)
-
-        logger.info("Executing beacon federation call")
-        beacon_results = download_helpers.execute_federation_call(
-            federation_url=federation_url,
-            headers=headers,
-            payload=beacon_payload,
+        # Clinical processing if:
+        # 1. -c or -a specified (want clinical files)
+        # 2. Any clinical filters are specified (want to use biosample IDs for filtering variant)
+        has_clinical_filters = any(
+            [args.treatment_type, args.primary_site, args.drug_name, args.program_id]
         )
+        should_process_clinical = args.clinical or args.all or has_clinical_filters
 
-        if beacon_results is None:
-            logger.error("Beacon request failed. Cannot proceed.")
-            sys.exit(1)
-
-        program_sample_ids = genomics_helpers.extract_unique_program_sample_ids_from_beacon_results(
-            beacon_results
-        )
-        logger.debug(
-            f"Found {len(program_sample_ids)} program_sample ids from beacon search: {program_sample_ids}"
-        )
-
-        if not program_sample_ids:
-            logger.warning(
-                "No program_sample ids found matching the genomic search criteria. Exiting."
+        if should_process_clinical:
+            new_biosample_ids = _process_clinical_data(
+                args,
+                headers,
+                federation_url,
+                session_dir,
+                initial_biosample_ids=new_biosample_ids,  # Pass IDs from beacon, if any
             )
-            sys.exit(0)
 
-    # ===== Download Clinical Data =====
-    if args.clinical or args.all:
-        print("\nDownloading clinical data...")
-        # Determine if this is a clinical-only dry run
-        is_clinical_dry_run = args.dry_run and args.clinical and not args.all
-        
-        clinical_payload = clinical_helpers.build_clinical_request_payload(
-            biosample_ids=program_sample_ids,
-            treatment_types=args.treatment_type,
-            primary_sites=args.primary_site,
-            drug_names=args.drug_name,
-            program_ids=args.program_id,
-            summary_only=is_clinical_dry_run,
-        )
-
-        with tqdm(desc="Fetching clinical data", unit="source") as pbar:
-            clinical_federation_results = download_helpers.execute_federation_call(
-                federation_url=federation_url,
-                headers=headers,
-                payload=clinical_payload,
-                progress_callback=lambda: pbar.update(1),
-            )
-            if clinical_federation_results is None:
-                logger.error("Clinical data request failed.")
-                sys.exit(1)
-
-
-        aggregated_clinical_data = clinical_helpers.aggregate_clinical_results(
-            clinical_federation_results,
-            is_clinical_dry_run=is_clinical_dry_run
-        )
-        if aggregated_clinical_data:
-            if is_clinical_dry_run:
-                print("\nClinical Data Summary:")
-                print(f"Message: {aggregated_clinical_data['summary']['message']}")
-                print("\nRecord Counts:")
-                for category, count in aggregated_clinical_data['summary']['record_counts'].items():
-                    print(f"  {category}: {count}")
-            else:
-                clinical_dir = session_dir / "clinical_data"
-                clinical_dir.mkdir(exist_ok=True)
-                clinical_helpers.write_clinical_csvs(
-                    aggregated_clinical_data, str(clinical_dir)
-                )
-                print(f"Clinical data saved to: {clinical_dir}")
-                # use the program_sample_ids from the clinical data if available
-                program_sample_ids = clinical_helpers.extract_unique_program_sample_ids_from_clinical_data(
-                    aggregated_clinical_data
-                )
-        else:
-            logger.warning("No clinical data found")
-
-        
-
-    # ===== Download Variant Data =====
+    # --- Variant Data Processing ---
     if args.variant or args.all:
-        print("\nDownloading variant data...")
-        download_helpers.download_variant_data(
-            program_sample_ids=program_sample_ids,
-            headers=headers,
-            federation_url=federation_url,
-            session_dir=session_dir,
-            is_dry_run=args.dry_run,
+        _process_variant_data(
+            args, headers, federation_url, session_dir, new_biosample_ids
         )
-        print(f"Variant data saved to: {session_dir}")
+
+    print(
+        f"\nAll operations finished. Output data and logs are in: {session_dir.resolve()}"
+    )
+    if args.dry_run:
+        print(
+            "DRY RUN COMPLETED. No actual data was downloaded (metadata logs might be appended)."
+        )
 
 
 if __name__ == "__main__":
@@ -311,6 +386,14 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.", file=sys.stderr)
         sys.exit(1)
-    except Exception as e:
-        print(f"\nAn unexpected top-level error occurred: {e}", file=sys.stderr)
+    except SystemExit as e:
+        sys.exit(e.code)
+    except Exception:
+        if not logging.getLogger().hasHandlers():
+            setup_logging(logging.DEBUG)
+        logger.critical("An unexpected top-level error occurred:", exc_info=True)
+        print(
+            "\nAn unexpected top-level error occurred. Check logs for details.",
+            file=sys.stderr,
+        )
         sys.exit(1)
