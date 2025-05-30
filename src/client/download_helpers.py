@@ -1041,7 +1041,7 @@ def run_variant_download_pipeline(
         total_size_bytes_would_download = 0
 
         print(
-            f"\n--- DRY RUN: Simulating processing of {variant_metadata_log_path} ---"
+            f"\n--- DRY RUN: Processing of {variant_metadata_log_path} ---"
         )
         for item in all_pending_metadata:
             filename = item.get("filename", "N/A")
@@ -1098,7 +1098,7 @@ def run_variant_download_pipeline(
                     expected_size if isinstance(expected_size, int) else 0
                 )
                 print(
-                    f"  - {filename} ({expected_size or 'N/A'} bytes) -> {target_path} (WOULD BE DOWNLOADED)"
+                    f"  - {filename}:{expected_size or 'N/A'} bytes"
                 )
 
         print("\n--- DRY RUN Summary ---")

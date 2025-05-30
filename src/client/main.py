@@ -125,13 +125,14 @@ def _process_clinical_data(
     initial_biosample_ids: Optional[List[str]],
 ) -> List[str]:
     print("Processing clinical data ...")
+
     clinical_payload = clinical_helpers.build_clinical_request_payload(
         biosample_ids=initial_biosample_ids,
         treatment_types=args.treatment_type,
         primary_sites=args.primary_site,
         drug_names=args.drug_name,
         program_ids=args.program_id,
-        summary_only=args.dry_run,
+        summary_only=args.dry_run if args.clinical else False,
     )
 
     with tqdm(
@@ -139,7 +140,6 @@ def _process_clinical_data(
         unit="source",
         disable=args.dry_run or not logger.isEnabledFor(logging.INFO),
     ) as pbar:
-        # Call federation nodes with clinical payload
         clinical_results = download_helpers.execute_federation_call(
             federation_url,
             headers,
@@ -148,45 +148,33 @@ def _process_clinical_data(
         )
 
     if clinical_results is None:
-        logger.critical(
-            "Clinical data request failed (API error or no response). Exiting."
-        )
+        logger.critical("Clinical data request failed (API error or no response). Exiting.")
         sys.exit(1)
-
-    aggregated_data = clinical_helpers.aggregate_clinical_results(
-        clinical_results, is_clinical_dry_run=args.dry_run
-    )
 
     if args.dry_run:
         print("\nClinical Data Summary (Dry Run):")
-        if "summary" in aggregated_data and aggregated_data["summary"]:
-            print(f"  Message: {aggregated_data['summary'].get('message', 'N/A')}")
+        summary = clinical_helpers.aggregate_clinical_results(clinical_results, is_clinical_dry_run=True).get("summary")
+        if summary:
+            print(f"  Message: {summary.get('message', 'N/A')}")
             print("  Record Counts:")
-            for cat, count in (
-                aggregated_data["summary"].get("record_counts", {}).items()
-            ):
+            for cat, count in summary.get("record_counts", {}).items():
                 print(f"    {cat}: {count}")
         else:
-            print(
-                "  No summary information available in dry run results for clinical data."
-            )
-    elif not args.dry_run:
+            print("  No summary information available in dry run results for clinical data.")
+        
+
+    if not args.clinical:
+        aggregated_data = clinical_helpers.aggregate_clinical_results(clinical_results)
         clinical_dir = session_dir / "clinical_data"
         clinical_dir.mkdir(exist_ok=True)
         clinical_helpers.write_clinical_csvs(aggregated_data, str(clinical_dir))
         print(f"Clinical data saved to: {clinical_dir}")
 
-    final_biosample_ids = (
-        clinical_helpers.extract_unique_program_sample_ids_from_clinical_data(
-            aggregated_data
-        )
-    )
+        final_ids = clinical_helpers.extract_unique_program_sample_ids_from_clinical_data(aggregated_data)
+        logger.info(f"Clinical processing yielded {len(final_ids)} sample IDs for subsequent steps.")
+        return final_ids
 
-    logger.info(
-        f"Clinical processing yielded {len(final_biosample_ids)} sample IDs for subsequent steps."
-    )
-    return final_biosample_ids
-
+    return []
 
 # --- Helper: Variant Data Processing ---
 def _process_variant_data(
@@ -376,7 +364,7 @@ def main():
     )
     if args.dry_run:
         print(
-            "DRY RUN COMPLETED. No actual data was downloaded (metadata logs might be appended)."
+            "DRY RUN COMPLETED."
         )
 
 
