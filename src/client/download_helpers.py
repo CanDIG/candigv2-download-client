@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import config
-import genomics_helpers
+from client import config
+from client import genomics_helpers
 import httpx
 from tqdm import tqdm
 

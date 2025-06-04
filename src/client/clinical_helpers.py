@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-import config
+from client import config
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)

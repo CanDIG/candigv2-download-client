@@ -2,7 +2,7 @@ import logging
 import sys
 from typing import Any, Dict, List, Optional, Set
 
-import config
+from client import config
 
 logger = logging.getLogger(__name__)
 

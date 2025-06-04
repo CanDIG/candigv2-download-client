@@ -4,11 +4,11 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import auth
-import clinical_helpers
-import config
-import download_helpers
-import genomics_helpers
+from client import auth
+from client import clinical_helpers
+from client import config
+from client import download_helpers
+from client import genomics_helpers
 from colorama import Fore, Style, init
 from tqdm import tqdm
 
