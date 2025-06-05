@@ -3,6 +3,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
+from datetime import datetime
 
 from client import auth
 from client import clinical_helpers
@@ -17,33 +18,24 @@ logger = logging.getLogger(__name__)
 
 
 # --- Logging Setup ---
-class ColoredFormatter(logging.Formatter):
-    COLORS = {
-        logging.DEBUG: Fore.BLUE,
-        logging.INFO: Fore.GREEN,
-        logging.WARNING: Fore.YELLOW,
-        logging.ERROR: Fore.RED,
-        logging.CRITICAL: Fore.RED + Style.BRIGHT,
-    }
 
-    def format(self, record):
-        color = self.COLORS.get(record.levelno)
-        if color:
-            record.msg = f"{color}{record.msg}{Style.RESET_ALL}"
-            record.levelname = f"{color}{record.levelname}{Style.RESET_ALL}"
-        return super().format(record)
-
-
-def setup_logging(log_level: int = config.LOG_LEVEL) -> None:
+def setup_logging(session_dir: Path, log_level: int = config.LOG_LEVEL) -> None:
     log_format = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
-    formatter = ColoredFormatter(log_format)
+    formatter = logging.Formatter(log_format)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
+    file_handler = logging.FileHandler(Path(session_dir, "download-client.log"))
+    plain_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(plain_formatter)
     root_logger = logging.getLogger()
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
     root_logger.setLevel(log_level)
     root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+    # Suppress httpx info logs unless log_level is DEBUG
+    httpx_log_level = logging.WARNING if log_level > logging.DEBUG else logging.DEBUG
+    logging.getLogger("httpx").setLevel(httpx_log_level)
 
 
 # --- Helper : Session Setup ---
@@ -169,7 +161,7 @@ def _process_clinical_data(
         clinical_dir = session_dir / "clinical_data"
         clinical_dir.mkdir(exist_ok=True)
         clinical_helpers.write_clinical_csvs(aggregated_data, str(clinical_dir))
-        print(f"Clinical data saved to: {clinical_dir}")
+        logger.info(f"Clinical data saved to: {clinical_dir}")
 
         final_ids = clinical_helpers.extract_unique_program_sample_ids_from_clinical_data(aggregated_data)
         logger.info(f"Clinical processing yielded {len(final_ids)} sample IDs for subsequent steps.")
@@ -194,7 +186,7 @@ def _process_variant_data(
         is_dry_run=args.dry_run,
         session_dir=session_dir,
     )
-    print(f"Variant data saved to: {session_dir / 'variant_data'}")
+    logger.info(f"Variant data saved to: {session_dir / 'variant_data'}")
 
 
 def main():
@@ -211,7 +203,7 @@ def main():
         "-ll",
         "--log-level",
         type=int,
-        default=logging.WARNING,
+        default=logging.INFO,
         help="Logging level (10=DEBUG ... 50=CRITICAL)",
     )
 
@@ -265,9 +257,10 @@ def main():
     #   3. Download and process clinical data (if requested)
     #   4. Download and process variant data (if requested)
     # ===================================================
+    session_dir = _setup_session_download(args.resume)
 
     # ===== Setup Logging =====
-    setup_logging(args.log_level)
+    setup_logging(session_dir, args.log_level)
 
     if args.dry_run:
         logger.warning("DRY RUN MODE ENABLED")
@@ -331,7 +324,7 @@ def main():
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
-    session_dir = _setup_session_download(args.resume)
+
     federation_url = f"{config.DEFAULT_BASE_URL.rstrip('/')}{config.FEDERATION_PATH}"
 
     # --- Biosample IDs ---
@@ -365,11 +358,11 @@ def main():
             args, headers, federation_url, session_dir, new_biosample_ids
         )
 
-    print(
+    logger.info(
         f"\nAll operations finished. Output data and logs are in: {session_dir.resolve()}"
     )
     if args.dry_run:
-        print(
+        logger.info(
             "DRY RUN COMPLETED."
         )
 

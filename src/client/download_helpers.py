@@ -166,14 +166,14 @@ def execute_federation_call(
     """
     service = payload.get("service", "unknown")
     path = payload.get("path", "N/A")
-    logger.info(f"Sending request to federation service ({path})...")
+    logger.debug(f"Sending request to federation service ({path})...")
 
     try:
         with httpx.Client(timeout=config.TIMEOUT) as client:
             logger.debug(f"Request payload: {json.dumps(payload, indent=2)}")
             response = client.post(federation_url, headers=headers, json=payload)
             response.raise_for_status()
-            logger.info(f"Request successful (Status: {response.status_code})")
+            logger.debug(f"Request successful (Status: {response.status_code})")
             if progress_callback:
                 progress_callback()
             return response.json()
@@ -212,7 +212,7 @@ def download_file(
     """Download a file from a URL."""
     try:
         output_path = output_dir / filename
-        logger.info(f"Downloading from url {url} to {output_path}")
+        logger.debug(f"Downloading from url {url} to {output_path}")
 
         with httpx.stream(
             "GET", url, headers=headers, timeout=config.TIMEOUT
@@ -237,7 +237,7 @@ def download_file(
                     for chunk in response.iter_raw():
                         f.write(chunk)
 
-        logger.info(f"Successfully downloaded {filename} to {output_path}")
+        logger.debug(f"Successfully downloaded {filename} to {output_path}")
         return DownloadResult(
             success=True, file_path=str(output_path), status="DOWNLOADED_SUCCESS"
         )
@@ -367,7 +367,7 @@ def collect_metadata_for_file_item(
         return None
 
     drs_object_name = file_item_info["name"]
-    logger.info(f"Collecting metadata for {file_type_label} file: {drs_object_name}")
+    logger.debug(f"Collecting metadata for {file_type_label} file: {drs_object_name}")
 
     payload = genomics_helpers.build_file_drs_request_payload(drs_object_name)
     federation_responses = execute_federation_call(
@@ -452,13 +452,13 @@ def collect_metadata_for_analysis_drs_objects(
             analysis_drs_results.get("metadata", {}).get("analysis_type")
             != "sequence_variation"
         ):
-            logger.info(
+            logger.debug(
                 f"Skipping non-sequence variation AnalysisDRS object '{analysis_drs_results.get('name', 'N/A')}' from {location}."
             )
             continue
 
         any_sequence_variation_found_in_responses = True
-        logger.info(
+        logger.debug(
             f"Processing sequence variation AnalysisDRS '{analysis_drs_results.get('name', 'N/A')}' from {location}."
         )
 
@@ -498,7 +498,7 @@ def collect_metadata_for_analysis_drs_objects(
                 processed_content_for_this_source = True
 
         if processed_content_for_this_source:
-            logger.info(
+            logger.debug(
                 f"Collected metadata from AnalysisDRS '{analysis_drs_results.get('name', 'N/A')}' at {location}."
             )
             break
@@ -670,7 +670,7 @@ def collect_all_variant_metadata(
                                 sample_has_any_seq_var_data = True
                                 metadata_for_current_sample.extend(files_meta)
                                 if files_meta:
-                                    logger.info(
+                                    logger.debug(
                                         f"Collected {len(files_meta)} file metadata entries for AnalysisDRS '{analysis_drs_name}'."
                                     )
                         else:
@@ -679,16 +679,16 @@ def collect_all_variant_metadata(
                             )
 
         if sample_has_any_seq_var_data and metadata_for_current_sample:
-            logger.info(
+            logger.debug(
                 f"Found sequence variation data for {program_sample_id}. Adding {len(metadata_for_current_sample)} file(s)."
             )
             all_files_metadata_accumulator.extend(metadata_for_current_sample)
         elif sample_has_any_seq_var_data:
-            logger.info(
+            logger.debug(
                 f"Sequence variation analysis found for {program_sample_id}, but no downloadable files' metadata collected."
             )
         else:
-            logger.info(
+            logger.debug(
                 f"No sequence variation data found for sample {program_sample_id}."
             )
 
@@ -736,7 +736,7 @@ def write_metadata_to_file(
         with open(metadata_file_path, "a") as f:
             for metadata_entry in files_metadata_list:
                 f.write(json.dumps(metadata_entry) + "\n")
-        logger.info(
+        logger.debug(
             f"Successfully appended {len(files_metadata_list)} metadata entries to {metadata_file_path}"
         )
     except IOError as e:
@@ -809,7 +809,7 @@ def download_files_from_collected_metadata(
         )
         return all_download_results
 
-    logger.info(
+    logger.debug(
         f"Processing {len(valid_metadata_to_process)} file entries for download/verification..."
     )
 
@@ -852,11 +852,11 @@ def download_files_from_collected_metadata(
             is_redownload_attempt = (
                 True  # Tentatively, will be set to False if validation passes
             )
-            logger.info(f"File {absolute_output_path} exists. Verifying...")
+            logger.debug(f"File {absolute_output_path} exists. Verifying...")
             verification_status, verification_msg = verify_local_file(
                 absolute_output_path, expected_size, expected_checksums
             )
-            logger.info(
+            logger.debug(
                 f"Verification result for {filename}: {verification_status} - {verification_msg}"
             )
 
@@ -941,7 +941,7 @@ def read_metadata_from_file(metadata_file_path: Path) -> List[Dict[str, Any]]:
                     logger.error(
                         f"Skipping invalid JSON line {i + 1} in {metadata_file_path}: '{stripped_line}' - Error: {e}"
                     )
-        logger.info(
+        logger.debug(
             f"Read {len(metadata_list)} metadata entries from {metadata_file_path}"
         )
         return metadata_list
@@ -993,7 +993,7 @@ def run_variant_download_pipeline(
 
     newly_collected_metadata: List[Dict[str, Any]] = []
     if program_sample_ids:
-        logger.info(
+        logger.debug(
             f"PHASE 1: Collecting new metadata for {len(program_sample_ids)} program-sample ID(s)..."
         )
         newly_collected_metadata = collect_all_variant_metadata(
@@ -1007,7 +1007,7 @@ def run_variant_download_pipeline(
                 files_metadata_list=newly_collected_metadata,
                 metadata_file_path=variant_metadata_log_path,
             )
-            logger.info(
+            logger.debug(
                 f"Appended {len(newly_collected_metadata)} new entries to {variant_metadata_log_path}."
             )
         else:
@@ -1027,7 +1027,7 @@ def run_variant_download_pipeline(
         )
         return True
 
-    logger.info(
+    logger.debug(
         f"PHASE 2: Processing {len(all_pending_metadata)} total entries from {variant_metadata_log_path}."
     )
 

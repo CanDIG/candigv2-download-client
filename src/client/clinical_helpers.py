@@ -202,7 +202,7 @@ def write_clinical_csvs(
                 pbar.update(1)
                 continue
 
-            logger.info(
+            logger.debug(
                 f"Writing {len(valid_records)} records for category '{category}' to {filename}..."
             )
             try:
