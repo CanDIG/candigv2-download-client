@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-import config
+from client import config
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -62,18 +62,11 @@ def aggregate_clinical_results(
     is_clinical_dry_run: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Aggregates results from multiple federated sources.
-    
     For dry runs, aggregates summary counts from all sources.
     For normal runs, aggregates the actual data records.
-    
-    Args:
-        clinical_federation_results: List of responses from clinical federation sources
-        is_dry_run: Whether this is a dry run request
-        is_clinical_only: Whether this is a clinical-only request (vs variant/all)
     """
-    
+
     if is_clinical_dry_run:
-        # Initialize total counts dictionary
         total_counts = {
             "biomarkers": 0,
             "comorbidities": 0,
@@ -86,21 +79,27 @@ def aggregate_clinical_results(
             "specimens": 0,
             "surgeries": 0,
             "systemic_therapies": 0,
-            "treatments": 0
+            "treatments": 0,
         }
         sources_with_data = 0
-        
+
         for clinical_source_response in clinical_federation_results:
-            source_name = clinical_source_response.get("location", {}).get("name", "Unknown Source")
+            source_name = clinical_source_response.get("location", {}).get(
+                "name", "Unknown Source"
+            )
             if clinical_source_response.get("error"):
                 logger.warning(
                     f"Skipping source {source_name} due to reported error: {clinical_source_response.get('source', 'Unknown Source')}"
                 )
                 continue
 
-            source_summary = clinical_source_response.get("results", {}).get("summary", {})
+            source_summary = clinical_source_response.get("results", {}).get(
+                "summary", {}
+            )
             if not source_summary:
-                logger.warning(f"Warning: Skipping source {source_name}, no summary data found")
+                logger.warning(
+                    f"Warning: Skipping source {source_name}, no summary data found"
+                )
                 continue
 
             record_counts = source_summary.get("record_counts", {})
@@ -108,25 +107,30 @@ def aggregate_clinical_results(
                 for category, count in record_counts.items():
                     total_counts[category] += count
                 sources_with_data += 1
-                logger.info(f"Source {source_name} summary: {source_summary.get('message', 'No message')}")
+                logger.info(
+                    f"Source {source_name} summary: {source_summary.get('message', 'No message')}"
+                )
 
         if sources_with_data > 0:
             logger.info(f"Aggregated summary from {sources_with_data} source(s).")
             return {
                 "summary": {
                     "message": f"Total records across {sources_with_data} sources",
-                    "record_counts": total_counts
+                    "record_counts": total_counts,
                 }
             }
         else:
-            logger.info("No summary data found matching clinical data criteria across all sources.")
+            logger.info(
+                "No summary data found matching clinical data criteria across all sources."
+            )
             return None
 
-    # Original aggregation logic for non-dry-run mode
     aggregated_results: Dict[str, List[Dict[str, Any]]] = {}
     sources_with_data = 0
     for clinical_source_response in clinical_federation_results:
-        source_name = clinical_source_response.get("location", {}).get("name", "Unknown Source")
+        source_name = clinical_source_response.get("location", {}).get(
+            "name", "Unknown Source"
+        )
         if clinical_source_response.get("error"):
             logger.warning(
                 f"Skipping source {source_name} due to reported error: {clinical_source_response.get('source', 'Unknown Source')}"
@@ -140,7 +144,7 @@ def aggregate_clinical_results(
 
         data_found_in_source = False
         for category, records in source_results.items():
-            if isinstance(records, list) and records:  # Only process non-empty lists
+            if isinstance(records, list) and records:
                 if category not in aggregated_results:
                     aggregated_results[category] = []
                 aggregated_results[category].extend(
@@ -155,7 +159,9 @@ def aggregate_clinical_results(
         logger.info(f"Aggregated data from {sources_with_data} source(s).")
         return aggregated_results
     else:
-        logger.info("No data found matching clinical data criteria across all sources.")
+        logger.warning(
+            "No data found matching clinical data criteria across all sources."
+        )
         return None
 
 
@@ -196,7 +202,7 @@ def write_clinical_csvs(
                 pbar.update(1)
                 continue
 
-            logger.info(
+            logger.debug(
                 f"Writing {len(valid_records)} records for category '{category}' to {filename}..."
             )
             try:
@@ -247,10 +253,14 @@ def write_clinical_csvs(
 def extract_unique_program_sample_ids_from_clinical_data(
     clinical_data: Dict[str, List[Dict[str, Any]]],
 ) -> List[str]:
-    """Extracts unique program_sample_ids from clinical data."""
-    program_sample_ids = set()
-    for sample in clinical_data["sample_registrations"]:
-        program_sample_ids.add(
-            f"{sample.get('program_id')}~{sample.get('submitter_sample_id')}"
-        )
+    if not clinical_data or "sample_registrations" not in clinical_data:
+        logger.warning("No clinical data provided or data is not in expected format.")
+        return []
+
+    program_sample_ids = {
+        f"{sample.get('program_id')}~{sample.get('submitter_sample_id')}"
+        for sample in clinical_data.get("sample_registrations", [])
+        if sample.get("program_id") is not None
+        and sample.get("submitter_sample_id") is not None
+    }
     return list(program_sample_ids)
