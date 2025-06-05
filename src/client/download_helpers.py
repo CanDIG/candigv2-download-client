@@ -653,7 +653,7 @@ def collect_all_variant_metadata(
                         if analysis_drs_fed_resp:
                             relative_sample_files_dir = (
                                 Path(variants_output_parent_dir_name)
-                                / f"{program_id}-{sample_id}"
+                                / f"{program_id}"
                             )
 
                             files_meta, has_seq_var_in_obj = (
