@@ -17,28 +17,16 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 git clone https://github.com/CanDIG/candigv2-download-client.git
 cd candigv2-download-client
-```
 
-## Usage
-
-You can run the tool in two ways:
-
-#### Quick Mode
-
-```bash
-uv run python -m src.client.main
-```
-
-#### Development Mode
-
-```bash
+# create virtual environment
 uv venv
 source .venv/bin/activate
+
+# install dependencies
 uv pip install -e .
-candigv2-client
 ```
 
-### Configure CanDIG instance
+## Configure CanDIG instance
 
 Change the value of `DEFAULT_BASE_URL` to the CanDIG instance you will be downloading from in `src/client/config.py`.
 
@@ -50,12 +38,12 @@ The program can download either clinical only, variant only, or all data a user 
 python src/client/main.py [MODE] [OPTIONS...]
 ```
 
-### Authentication
+## Authentication
 
 *   You can provide the token using the `--token YOUR_TOKEN` argument.
 *   If `--token` is not provided, the script will prompt you to enter the token securely in the terminal
 
-### Options
+## Options
 
 **Arguments:**
 
@@ -72,7 +60,7 @@ python src/client/main.py [MODE] [OPTIONS...]
     *   `--variant|-v`: If specified, downloads variant data
     *   `--log-level|-ll`: set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL). Default is WARNING (30)
     *   `--dry-run|-d`: If specified, shows what would be downloaded (record counts, file sizes). Note that variant dry-run would still download the clinical data for filtering purpose.
-    * `--resume|-r` resume download
+    * `--resume|-r` continue the download by locating the existing session folder
     *   *Coming soon* `--matrix|-m`: If specified, downloads transcriptomic matrices for filtered donors 
 
 
