@@ -151,7 +151,8 @@ def _process_clinical_data(
         logger.critical("Clinical data request failed (API error or no response). Exiting.")
         sys.exit(1)
 
-    if args.dry_run:
+    # if dry run and only clinical data is requested
+    if args.dry_run and args.clinical:
         print("\nClinical Data Summary (Dry Run):")
         summary = clinical_helpers.aggregate_clinical_results(clinical_results, is_clinical_dry_run=True).get("summary")
         if summary:
@@ -161,9 +162,9 @@ def _process_clinical_data(
                 print(f"    {cat}: {count}")
         else:
             print("  No summary information available in dry run results for clinical data.")
-        
-
-    if not args.clinical:
+    
+    # otherwise, save clinical data
+    else:
         aggregated_data = clinical_helpers.aggregate_clinical_results(clinical_results)
         clinical_dir = session_dir / "clinical_data"
         clinical_dir.mkdir(exist_ok=True)
@@ -312,6 +313,11 @@ def main():
 
     if args.gene_id and args.coord:
         parser.error("Cannot use both --gene-id and --coord. Exiting.")
+    
+    if args.variant and args.dry_run and not (args.gene_id or args.coord):
+        parser.error(
+            "When using --variant with --dry-run, you must specify either --gene-id or --coord."
+        )
 
     # ===== Authentication & Session =====
     auth_token = auth.get_auth_token(args.token)  # Prompts if args.token is None
