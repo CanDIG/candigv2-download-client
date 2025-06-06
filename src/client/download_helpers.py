@@ -193,7 +193,10 @@ def execute_federation_call(
         )
         try:
             details = e.response.json()
-            print(f"Error details: {json.dumps(details, indent=2)}", file=sys.stderr)
+            logger.error(f"Error details: {json.dumps(details)}")
+            if "error" in details:
+                if details["error"] == "Key not authorised":
+                    logger.error(f"Either your token has expired or there is an issue with another node in the network. Please retry with a new token or use -r to resume an interrupted download. Federated node status can be checked on the summary page.")
         except json.JSONDecodeError:
             print(f"Response body: {e.response.text[:500]}...", file=sys.stderr)
         return None
