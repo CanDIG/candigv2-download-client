@@ -1,4 +1,3 @@
 httpx
 tqdm
-colorama
 pandas

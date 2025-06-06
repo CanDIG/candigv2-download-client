@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "httpx",
     "tqdm",
-    "colorama",
+    "pandas",
 ]
 
 [project.scripts]
