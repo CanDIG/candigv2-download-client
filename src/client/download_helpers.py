@@ -643,6 +643,7 @@ def collect_all_variant_metadata(
                 exp_loc = fed_resp_item_exp.get("location", "N/A")
                 experiment_results_list = fed_resp_item_exp.get("results", [])
 
+                # Extract experiment object metadata
                 for experiment_obj in experiment_results_list:
                     experiment_metadata_dict[program_sample_id] = experiment_obj.get("metadata")
                     experiment_metadata_dict[program_sample_id]["experiment_id"] = experiment_obj.get('id')
@@ -671,6 +672,7 @@ def collect_all_variant_metadata(
                                     / f"{program_id}"
                             )
 
+                            # Extract analysis object metadata
                             for response in analysis_drs_fed_resp:
                                 if "results" in response:
                                     analysis_obj_results = response['results']['id']
@@ -1219,11 +1221,6 @@ def run_variant_download_pipeline(
         download_headers=download_headers,
         session_dir=session_dir,
     )
-
-    with open(variant_metadata_log_path, "a") as variant_log:
-        for result in download_results:
-            json.dump(result.as_dict(), variant_log)
-            variant_log.write("\n")
 
     succeeded_new_downloads = sum(
         1 for r in download_results if r.status == "DOWNLOADED_SUCCESS"
