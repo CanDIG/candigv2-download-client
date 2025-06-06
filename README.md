@@ -114,7 +114,7 @@ candigv2-client [OUTPUT_TYPE] [FILTER]
 7. **Fetch all available data for donors that were treated with the drug `Durvalumab` (allowing for multiple case-sensitive options):**
 
     ```bash
-    candigv2-client-a --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
+    candigv2-client -a --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
     ```
 
 8. **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
