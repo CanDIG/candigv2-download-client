@@ -25,6 +25,13 @@ class DownloadResult:
     status: Optional[str] = None
     message: Optional[str] = None
 
+    def as_dict(self):
+        return {"success": self.success,
+                "file_path": self.file_path,
+                "error": self.error,
+                "status": self.status,
+                "message": self.message}
+
 
 # --- Checksum Utilities ---
 def calculate_checksum(file_path: Path, hash_type: str = "md5") -> Optional[str]:
@@ -593,7 +600,7 @@ def collect_all_variant_metadata(
             if program_id in genomics_programs:
                 valid_program_ids_to_process.append(ps_id)
             else:
-                logger.info(
+                logger.debug(
                     f"Skipping '{ps_id}': program '{program_id}' not in fetched genomics programs list."
                 )
         except ValueError:
@@ -1131,6 +1138,11 @@ def run_variant_download_pipeline(
         download_headers=download_headers,
         session_dir=session_dir,
     )
+
+    with open(variant_metadata_log_path, "a") as variant_log:
+        for result in download_results:
+            json.dump(result.as_dict(), variant_log)
+            variant_log.write("\n")
 
     succeeded_new_downloads = sum(
         1 for r in download_results if r.status == "DOWNLOADED_SUCCESS"
