@@ -2,6 +2,8 @@ import hashlib
 import json
 import logging
 import sys
+import csv
+import pandas as pd
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -572,7 +574,7 @@ def collect_all_variant_metadata(
     federation_headers: Dict[str, str],
     federation_url: str,
     is_dry_run: bool = False,
-) -> List[Dict[str, Any]]:
+):
     """
     Collects metadata for all provided program-sample IDs.
 
@@ -594,6 +596,8 @@ def collect_all_variant_metadata(
     variants_output_parent_dir_name = "variant_data"
 
     valid_program_ids_to_process = []
+    experiment_metadata_dict = {}
+    analysis_metadata_dict = {}
     for ps_id in program_sample_ids:
         try:
             program_id, _ = ps_id.split("~", 1)
@@ -640,6 +644,10 @@ def collect_all_variant_metadata(
                 experiment_results_list = fed_resp_item_exp.get("results", [])
 
                 for experiment_obj in experiment_results_list:
+                    experiment_metadata_dict[program_sample_id] = experiment_obj.get("metadata")
+                    experiment_metadata_dict[program_sample_id]["experiment_id"] = experiment_obj.get('id')
+                    experiment_metadata_dict[program_sample_id]["program_id"] = experiment_obj.get('program')
+                    experiment_metadata_dict[program_sample_id]["submitter_sample_id"] = experiment_obj.get('name')
                     for content_item in experiment_obj.get("contents", []):
                         analysis_drs_name = content_item.get("name")
                         if not analysis_drs_name:
@@ -662,6 +670,36 @@ def collect_all_variant_metadata(
                                 Path(variants_output_parent_dir_name)
                                 / f"{program_id}"
                             )
+
+                            analysis_obj_results = analysis_drs_fed_resp[0]['results']['id']
+                            analysis_metadata_dict[analysis_obj_results] = analysis_drs_fed_resp[0]['results']['metadata']
+                            analysis_metadata_dict[analysis_obj_results]["file_id"] = analysis_obj_results
+                            analysis_metadata_dict[analysis_obj_results]["program"] = analysis_drs_fed_resp[0]['results']['program']
+                            analysis_metadata_dict[analysis_obj_results]["reference_genome"] = \
+                            analysis_drs_fed_resp[0]['results']['reference_genome']
+                            for linked_obj in analysis_drs_fed_resp[0]['results'].get('contents'):
+                                if linked_obj['id'] not in ['analysis', 'index']:
+                                    try:
+                                        (analysis_metadata_dict[analysis_obj_results]['samples']
+                                         .append({
+                                                    "submitter_sample_id": linked_obj['name'],
+                                                    "analysis_sample_id": linked_obj['id'],
+                                                    "experiment_id": linked_obj['drs_uri'][0].rsplit('/', 1)[-1]
+                                                }))
+                                    except KeyError as e:
+                                        analysis_metadata_dict[analysis_obj_results]['samples'] = \
+                                            [
+                                                {
+                                                    "submitter_sample_id": linked_obj['name'],
+                                                    "analysis_sample_id": linked_obj['id'],
+                                                    "experiment_id": linked_obj['drs_uri'][0].rsplit('/', 1)[-1]
+                                                }
+                                            ]
+                                else:
+                                    try:
+                                        analysis_metadata_dict[analysis_obj_results]['files'].append(linked_obj['drs_uri'][0].rsplit('/', 1)[-1])
+                                    except KeyError as e:
+                                        analysis_metadata_dict[analysis_obj_results]['files'] = [linked_obj['drs_uri'][0].rsplit('/', 1)[-1]]
 
                             files_meta, has_seq_var_in_obj = (
                                 collect_metadata_for_analysis_drs_objects(
@@ -699,6 +737,8 @@ def collect_all_variant_metadata(
                 f"No sequence variation data found for sample {program_sample_id}."
             )
 
+    all_exp_metadata = {"experiment_metadata": experiment_metadata_dict,
+                        "analysis_metadata": analysis_metadata_dict}
     final_unique_metadata_list = []
     seen_keys_final = set()
     for meta_item in all_files_metadata_accumulator:
@@ -714,10 +754,41 @@ def collect_all_variant_metadata(
         else:
             final_unique_metadata_list.append(meta_item)
 
-    return final_unique_metadata_list
+    return final_unique_metadata_list, all_exp_metadata
 
 
-def write_metadata_to_file(
+def write_experiment_metadata_to_csv(
+        experiment_metadata: Dict, metadata_file_path: Path
+) -> None:
+    try:
+        metadata_file_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.error(
+            f"Could not create parent directory for metadata file {metadata_file_path}: {e}"
+        )
+        return
+
+    if not experiment_metadata:
+        logger.info(f"No new metadata entries to append to {metadata_file_path}.")
+        try:
+            with open(metadata_file_path, "a") as f:
+                pass
+        except IOError as e:
+            logger.error(
+                f"Could not ensure metadata file {metadata_file_path} exists: {e}"
+            )
+        return
+    try:
+        df = pd.DataFrame.from_dict(experiment_metadata, orient="index")
+        df.to_csv(metadata_file_path, index=False)
+        logger.debug(
+            f"Successfully wrote experiment metadata entries to {metadata_file_path}"
+        )
+    except IOError as e:
+        logger.error(f"Failed to append metadata to {metadata_file_path}: {e}")
+
+
+def write_variant_metadata_to_file(
     files_metadata_list: List[Dict[str, Any]], metadata_file_path: Path
 ) -> None:
     try:
@@ -1003,14 +1074,18 @@ def run_variant_download_pipeline(
         logger.debug(
             f"PHASE 1: Collecting new metadata for {len(program_sample_ids)} program-sample ID(s)..."
         )
-        newly_collected_metadata = collect_all_variant_metadata(
+        all_metadata = collect_all_variant_metadata(
             program_sample_ids=program_sample_ids,
             federation_headers=federation_headers,
             federation_url=federation_url,
             is_dry_run=is_dry_run,
         )
+        write_experiment_metadata_to_csv(all_metadata[1]['experiment_metadata'], Path(session_dir, "experiment_data.csv"))
+        write_experiment_metadata_to_csv(all_metadata[1]['analysis_metadata'],
+                                         Path(session_dir, "analysis_data.csv"))
+        newly_collected_metadata = all_metadata[0]
         if newly_collected_metadata:
-            write_metadata_to_file(
+            write_variant_metadata_to_file(
                 files_metadata_list=newly_collected_metadata,
                 metadata_file_path=variant_metadata_log_path,
             )
