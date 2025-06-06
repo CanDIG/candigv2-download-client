@@ -3,17 +3,14 @@ import logging
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime
 
 from client import auth
 from client import clinical_helpers
 from client import config
 from client import download_helpers
 from client import genomics_helpers
-from colorama import Fore, Style, init
 from tqdm import tqdm
 
-init()
 logger = logging.getLogger(__name__)
 
 
