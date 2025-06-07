@@ -3,17 +3,14 @@ import logging
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime
 
 from client import auth
 from client import clinical_helpers
 from client import config
 from client import download_helpers
 from client import genomics_helpers
-from colorama import Fore, Style, init
 from tqdm import tqdm
 
-init()
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +36,7 @@ def setup_logging(session_dir: Path, log_level: int = config.LOG_LEVEL) -> None:
 
 
 # --- Helper : Session Setup ---
-def _setup_session_download(resume_path_str: Optional[str]) -> Path:
+def _setup_session_download(log_level, resume_path_str: Optional[str]) -> Path:
     if resume_path_str:
         session_dir = Path(resume_path_str)
         if not session_dir.is_dir():
@@ -50,7 +47,8 @@ def _setup_session_download(resume_path_str: Optional[str]) -> Path:
         session_dir = download_helpers.get_download_session_dir()
         print(f"New download folder created at: {session_dir}")
 
-    run_log_file_path = session_dir / "run_command.log"
+    setup_logging(session_dir, log_level)
+    run_log_file_path = session_dir / "download-client.log"
     # Filter out token from argv
     filtered_argv = [
         arg
@@ -59,8 +57,7 @@ def _setup_session_download(resume_path_str: Optional[str]) -> Path:
         and (i == 0 or sys.argv[i - 1] != "--token")
         and not arg.startswith("--token=")
     ]
-    with open(run_log_file_path, "w") as f:
-        f.write(f"Run command: {' '.join(filtered_argv)}\n")
+    logger.info(f"Run command: {' '.join(filtered_argv)}\n")
     logger.info(f"Run command details saved to {run_log_file_path}")
     return session_dir
 
@@ -257,10 +254,9 @@ def main():
     #   3. Download and process clinical data (if requested)
     #   4. Download and process variant data (if requested)
     # ===================================================
-    session_dir = _setup_session_download(args.resume)
+    session_dir = _setup_session_download(args.log_level, args.resume)
 
     # ===== Setup Logging =====
-    setup_logging(session_dir, args.log_level)
 
     if args.dry_run:
         logger.warning("DRY RUN MODE ENABLED")
@@ -306,6 +302,11 @@ def main():
 
     if args.gene_id and args.coord:
         parser.error("Cannot use both --gene-id and --coord. Exiting.")
+
+    if args.variant and not (args.gene_id or args.coord):
+        parser.error(
+            "When using --variant, you must specify either --gene-id or --coord."
+        )
     
     if args.variant and args.dry_run and not (args.gene_id or args.coord):
         parser.error(

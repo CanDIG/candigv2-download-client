@@ -2,6 +2,8 @@ import hashlib
 import json
 import logging
 import sys
+import csv
+import pandas as pd
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +26,13 @@ class DownloadResult:
     error: Optional[str] = None
     status: Optional[str] = None
     message: Optional[str] = None
+
+    def as_dict(self):
+        return {"success": self.success,
+                "file_path": self.file_path,
+                "error": self.error,
+                "status": self.status,
+                "message": self.message}
 
 
 # --- Checksum Utilities ---
@@ -52,9 +61,9 @@ def calculate_checksum(file_path: Path, hash_type: str = "md5") -> Optional[str]
 
 
 def verify_local_file(
-    local_file_path: Path,
-    expected_size: Optional[int],
-    expected_checksums: List[Dict[str, str]],
+        local_file_path: Path,
+        expected_size: Optional[int],
+        expected_checksums: List[Dict[str, str]],
 ) -> Tuple[str, str]:
     """
     Verifies a local file against expected size and checksums.
@@ -142,9 +151,9 @@ def verify_local_file(
             "No checksums or size provided in metadata for validation.",
         )
     elif (
-        expected_checksums
-        and not has_verifiable_checksum_type_in_metadata
-        and expected_size is None
+            expected_checksums
+            and not has_verifiable_checksum_type_in_metadata
+            and expected_size is None
     ):
         return (
             "NO_VALIDATION_CRITERIA",
@@ -155,10 +164,10 @@ def verify_local_file(
 
 
 def execute_federation_call(
-    federation_url: str,
-    headers: Dict[str, str],
-    payload: Dict[str, Any],
-    progress_callback: Optional[callable] = None,
+        federation_url: str,
+        headers: Dict[str, str],
+        payload: Dict[str, Any],
+        progress_callback: Optional[callable] = None,
 ) -> Optional[List[Dict[str, Any]]]:
     """
     Makes a POST request to the federation endpoint.
@@ -184,7 +193,10 @@ def execute_federation_call(
         )
         try:
             details = e.response.json()
-            print(f"Error details: {json.dumps(details, indent=2)}", file=sys.stderr)
+            logger.error(f"Error details: {json.dumps(details)}")
+            if "error" in details:
+                if details["error"] == "Key not authorised":
+                    logger.error(f"Either your token has expired or there is an issue with another node in the network. Please retry with a new token or use -r to resume an interrupted download. Federated node status can be checked on the summary page.")
         except json.JSONDecodeError:
             print(f"Response body: {e.response.text[:500]}...", file=sys.stderr)
         return None
@@ -203,11 +215,11 @@ def execute_federation_call(
 
 
 def download_file(
-    url: str,
-    headers: Dict[str, str],
-    output_dir: Path,
-    filename: str,
-    show_progress: bool = True,
+        url: str,
+        headers: Dict[str, str],
+        output_dir: Path,
+        filename: str,
+        show_progress: bool = True,
 ) -> DownloadResult:
     """Download a file from a URL."""
     try:
@@ -215,7 +227,7 @@ def download_file(
         logger.debug(f"Downloading from url {url} to {output_path}")
 
         with httpx.stream(
-            "GET", url, headers=headers, timeout=config.TIMEOUT
+                "GET", url, headers=headers, timeout=config.TIMEOUT
         ) as response:
             response.raise_for_status()
             total_size = int(response.headers.get("content-length", 0))
@@ -223,12 +235,12 @@ def download_file(
             with open(output_path, "wb") as f:
                 if show_progress and total_size > 0:
                     with tqdm(
-                        total=total_size,
-                        unit="iB",
-                        unit_scale=True,
-                        desc=f" {filename[:25]:<25}..",
-                        leave=False,
-                        position=1,
+                            total=total_size,
+                            unit="iB",
+                            unit_scale=True,
+                            desc=f" {filename[:25]:<25}..",
+                            leave=False,
+                            position=1,
                     ) as pbar:
                         for chunk in response.iter_raw():
                             size = f.write(chunk)
@@ -298,7 +310,7 @@ def should_skip_file(drs_object_results: Dict[str, Any]) -> tuple[bool, Optional
 
 
 def extract_file_metadata_from_drs_results(
-    drs_object_results: Dict[str, Any], target_relative_dir: Path
+        drs_object_results: Dict[str, Any], target_relative_dir: Path
 ) -> Dict[str, Any]:
     """
     Extracts metadata needed for download from a DRS objects results field.
@@ -350,12 +362,12 @@ def extract_file_metadata_from_drs_results(
 
 
 def collect_metadata_for_file_item(
-    file_item_info: Dict[str, Any],
-    file_type_label: str,
-    federation_headers: Dict[str, str],
-    federation_url: str,
-    target_relative_dir: Path,
-    is_dry_run: bool = False,
+        file_item_info: Dict[str, Any],
+        file_type_label: str,
+        federation_headers: Dict[str, str],
+        federation_url: str,
+        target_relative_dir: Path,
+        is_dry_run: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
     Sends a request to the federation endpoint to retrieve DRS object
@@ -423,21 +435,21 @@ def collect_metadata_for_file_item(
 
 
 def collect_metadata_for_analysis_drs_objects(
-    analysis_drs_federation_response: List[Dict[str, Any]],
-    federation_headers: Dict[str, str],
-    federation_url: str,
-    target_relative_dir_for_sample: Path,
-    is_dry_run: bool = False,
-    tqdm_position: int = 1,
+        analysis_drs_federation_response: List[Dict[str, Any]],
+        federation_headers: Dict[str, str],
+        federation_url: str,
+        target_relative_dir_for_sample: Path,
+        is_dry_run: bool = False,
+        tqdm_position: int = 1,
 ) -> tuple[List[Dict[str, Any]], bool]:
     collected_files_metadata = []
     any_sequence_variation_found_in_responses = False
 
     for fed_resp_item_for_analysis_drs in tqdm(
-        analysis_drs_federation_response,
-        desc=" Checking AnalysisDRS sources",
-        leave=False,
-        position=tqdm_position,
+            analysis_drs_federation_response,
+            desc=" Checking AnalysisDRS sources",
+            leave=False,
+            position=tqdm_position,
     ):
         analysis_drs_results = fed_resp_item_for_analysis_drs.get("results")
         location = fed_resp_item_for_analysis_drs.get("location", "unknown location")
@@ -449,8 +461,8 @@ def collect_metadata_for_analysis_drs_objects(
             continue
 
         if (
-            analysis_drs_results.get("metadata", {}).get("analysis_type")
-            != "sequence_variation"
+                analysis_drs_results.get("metadata", {}).get("analysis_type")
+                != "sequence_variation"
         ):
             logger.debug(
                 f"Skipping non-sequence variation AnalysisDRS object '{analysis_drs_results.get('name', 'N/A')}' from {location}."
@@ -522,8 +534,8 @@ def collect_metadata_for_analysis_drs_objects(
 
 
 def get_programs_in_genomics(
-    federation_url: str,
-    federation_headers: Dict[str, str],
+        federation_url: str,
+        federation_headers: Dict[str, str],
 ) -> List[str]:
     """
     Queries all federated genomics services for available program names.
@@ -561,11 +573,11 @@ def get_programs_in_genomics(
 
 
 def collect_all_variant_metadata(
-    program_sample_ids: List[str],
-    federation_headers: Dict[str, str],
-    federation_url: str,
-    is_dry_run: bool = False,
-) -> List[Dict[str, Any]]:
+        program_sample_ids: List[str],
+        federation_headers: Dict[str, str],
+        federation_url: str,
+        is_dry_run: bool = False,
+):
     """
     Collects metadata for all provided program-sample IDs.
 
@@ -587,13 +599,15 @@ def collect_all_variant_metadata(
     variants_output_parent_dir_name = "variant_data"
 
     valid_program_ids_to_process = []
+    experiment_metadata_dict = {}
+    analysis_metadata_dict = {}
     for ps_id in program_sample_ids:
         try:
             program_id, _ = ps_id.split("~", 1)
             if program_id in genomics_programs:
                 valid_program_ids_to_process.append(ps_id)
             else:
-                logger.info(
+                logger.debug(
                     f"Skipping '{ps_id}': program '{program_id}' not in fetched genomics programs list."
                 )
         except ValueError:
@@ -607,10 +621,10 @@ def collect_all_variant_metadata(
         f"Processing {len(valid_program_ids_to_process)} program-sample IDs for metadata collection."
     )
     for program_sample_id in tqdm(
-        valid_program_ids_to_process,
-        desc="Samples metadata scan",
-        unit="sample",
-        position=0,
+            valid_program_ids_to_process,
+            desc="Samples metadata scan",
+            unit="sample",
+            position=0,
     ):
         try:
             program_id, sample_id = program_sample_id.split("~", 1)
@@ -632,7 +646,12 @@ def collect_all_variant_metadata(
                 exp_loc = fed_resp_item_exp.get("location", "N/A")
                 experiment_results_list = fed_resp_item_exp.get("results", [])
 
+                # Extract experiment object metadata
                 for experiment_obj in experiment_results_list:
+                    experiment_metadata_dict[program_sample_id] = experiment_obj.get("metadata")
+                    experiment_metadata_dict[program_sample_id]["experiment_id"] = experiment_obj.get('id')
+                    experiment_metadata_dict[program_sample_id]["program_id"] = experiment_obj.get('program')
+                    experiment_metadata_dict[program_sample_id]["submitter_sample_id"] = experiment_obj.get('name')
                     for content_item in experiment_obj.get("contents", []):
                         analysis_drs_name = content_item.get("name")
                         if not analysis_drs_name:
@@ -652,9 +671,45 @@ def collect_all_variant_metadata(
 
                         if analysis_drs_fed_resp:
                             relative_sample_files_dir = (
-                                Path(variants_output_parent_dir_name)
-                                / f"{program_id}-{sample_id}"
+                                    Path(variants_output_parent_dir_name)
+                                    / f"{program_id}"
                             )
+
+                            # Extract analysis object metadata
+                            for response in analysis_drs_fed_resp:
+                                if "results" in response:
+                                    analysis_obj_results = response['results']['id']
+                                    analysis_metadata_dict[analysis_obj_results] = response['results']['metadata']
+                                    analysis_metadata_dict[analysis_obj_results]["file_id"] = analysis_obj_results
+                                    analysis_metadata_dict[analysis_obj_results]["program"] = response['results'][
+                                        'program']
+                                    analysis_metadata_dict[analysis_obj_results]["reference_genome"] = \
+                                        response["results"]['reference_genome']
+                                    for linked_obj in response['results'].get('contents'):
+                                        if linked_obj['id'] not in ['analysis', 'index']:
+                                            try:
+                                                (analysis_metadata_dict[analysis_obj_results]['samples']
+                                                .append({
+                                                    "submitter_sample_id": linked_obj['name'],
+                                                    "analysis_sample_id": linked_obj['id'],
+                                                    "experiment_id": linked_obj['drs_uri'][0].rsplit('/', 1)[-1]
+                                                }))
+                                            except KeyError as e:
+                                                analysis_metadata_dict[analysis_obj_results]['samples'] = \
+                                                    [
+                                                        {
+                                                            "submitter_sample_id": linked_obj['name'],
+                                                            "analysis_sample_id": linked_obj['id'],
+                                                            "experiment_id": linked_obj['drs_uri'][0].rsplit('/', 1)[-1]
+                                                        }
+                                                    ]
+                                        else:
+                                            try:
+                                                analysis_metadata_dict[analysis_obj_results]['files'].append(
+                                                    linked_obj['drs_uri'][0].rsplit('/', 1)[-1])
+                                            except KeyError as e:
+                                                analysis_metadata_dict[analysis_obj_results]['files'] = [
+                                                    linked_obj['drs_uri'][0].rsplit('/', 1)[-1]]
 
                             files_meta, has_seq_var_in_obj = (
                                 collect_metadata_for_analysis_drs_objects(
@@ -692,6 +747,8 @@ def collect_all_variant_metadata(
                 f"No sequence variation data found for sample {program_sample_id}."
             )
 
+    all_exp_metadata = {"experiment_metadata": experiment_metadata_dict,
+                        "analysis_metadata": analysis_metadata_dict}
     final_unique_metadata_list = []
     seen_keys_final = set()
     for meta_item in all_files_metadata_accumulator:
@@ -707,11 +764,42 @@ def collect_all_variant_metadata(
         else:
             final_unique_metadata_list.append(meta_item)
 
-    return final_unique_metadata_list
+    return final_unique_metadata_list, all_exp_metadata
 
 
-def write_metadata_to_file(
-    files_metadata_list: List[Dict[str, Any]], metadata_file_path: Path
+def write_experiment_metadata_to_csv(
+        experiment_metadata: Dict, metadata_file_path: Path
+) -> None:
+    try:
+        metadata_file_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.error(
+            f"Could not create parent directory for metadata file {metadata_file_path}: {e}"
+        )
+        return
+
+    if not experiment_metadata:
+        logger.info(f"No new metadata entries to append to {metadata_file_path}.")
+        try:
+            with open(metadata_file_path, "a") as f:
+                pass
+        except IOError as e:
+            logger.error(
+                f"Could not ensure metadata file {metadata_file_path} exists: {e}"
+            )
+        return
+    try:
+        df = pd.DataFrame.from_dict(experiment_metadata, orient="index")
+        df.to_csv(metadata_file_path, index=False)
+        logger.debug(
+            f"Successfully wrote experiment metadata entries to {metadata_file_path}"
+        )
+    except IOError as e:
+        logger.error(f"Failed to append metadata to {metadata_file_path}: {e}")
+
+
+def write_variant_metadata_to_file(
+        files_metadata_list: List[Dict[str, Any]], metadata_file_path: Path
 ) -> None:
     try:
         metadata_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -747,9 +835,9 @@ def write_metadata_to_file(
 
 
 def download_files_from_collected_metadata(
-    files_metadata_list: List[Dict[str, Any]],
-    download_headers: Dict[str, str],
-    session_dir: Path,
+        files_metadata_list: List[Dict[str, Any]],
+        download_headers: Dict[str, str],
+        session_dir: Path,
 ) -> List[DownloadResult]:
     """
     For each metadata entry, this function:
@@ -783,11 +871,11 @@ def download_files_from_collected_metadata(
             )
             continue
         if not all(
-            [
-                meta_entry.get("download_url"),
-                filename,
-                meta_entry.get("target_output_dir"),
-            ]
+                [
+                    meta_entry.get("download_url"),
+                    filename,
+                    meta_entry.get("target_output_dir"),
+                ]
         ):
             error_msg = f"Incomplete metadata for '{filename}'. Skipping."
             logger.error(error_msg)
@@ -814,10 +902,10 @@ def download_files_from_collected_metadata(
     )
 
     for meta_entry in tqdm(
-        valid_metadata_to_process,
-        desc="Overall file processing",
-        unit="file",
-        position=0,
+            valid_metadata_to_process,
+            desc="Overall file processing",
+            unit="file",
+            position=0,
     ):
         download_url = meta_entry["download_url"]
         filename = meta_entry["filename"]
@@ -968,12 +1056,12 @@ def get_download_session_dir(base_download_path_str: str = "candig_downloads") -
 
 
 def run_variant_download_pipeline(
-    program_sample_ids: Optional[List[str]],
-    federation_headers: Dict[str, str],
-    download_headers: Dict[str, str],
-    federation_url: str,
-    session_dir: Path,
-    is_dry_run: bool = False,
+        program_sample_ids: Optional[List[str]],
+        federation_headers: Dict[str, str],
+        download_headers: Dict[str, str],
+        federation_url: str,
+        session_dir: Path,
+        is_dry_run: bool = False,
 ) -> bool:
     """
     This function performs two main phases:
@@ -996,14 +1084,19 @@ def run_variant_download_pipeline(
         logger.debug(
             f"PHASE 1: Collecting new metadata for {len(program_sample_ids)} program-sample ID(s)..."
         )
-        newly_collected_metadata = collect_all_variant_metadata(
+        all_metadata = collect_all_variant_metadata(
             program_sample_ids=program_sample_ids,
             federation_headers=federation_headers,
             federation_url=federation_url,
             is_dry_run=is_dry_run,
         )
+        write_experiment_metadata_to_csv(all_metadata[1]['experiment_metadata'],
+                                         Path(session_dir, "experiment_data.csv"))
+        write_experiment_metadata_to_csv(all_metadata[1]['analysis_metadata'],
+                                         Path(session_dir, "analysis_data.csv"))
+        newly_collected_metadata = all_metadata[0]
         if newly_collected_metadata:
-            write_metadata_to_file(
+            write_variant_metadata_to_file(
                 files_metadata_list=newly_collected_metadata,
                 metadata_file_path=variant_metadata_log_path,
             )
@@ -1052,7 +1145,7 @@ def run_variant_download_pipeline(
                 )
                 continue
             if not all(
-                [item.get("download_url"), filename, item.get("target_output_dir")]
+                    [item.get("download_url"), filename, item.get("target_output_dir")]
             ):
                 files_with_errors_in_meta += 1
                 print(f"  - Would skip {filename} due to incomplete metadata.")
@@ -1067,8 +1160,8 @@ def run_variant_download_pipeline(
                     target_path, expected_size, expected_checksums
                 )
                 if (
-                    verification_status == "MATCH_CHECKSUM"
-                    or verification_status == "MATCH_SIZE"
+                        verification_status == "MATCH_CHECKSUM"
+                        or verification_status == "MATCH_SIZE"
                 ):
                     files_would_skip_validated += 1
                     print(
