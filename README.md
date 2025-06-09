@@ -35,7 +35,7 @@ Change the value of `DEFAULT_BASE_URL` to the CanDIG instance you will be downlo
 The program can download either clinical only, variant only, or all data a user is authorized for using the following arguments: `--clinical` or `--variant` or `--all`. The data downloaded can be further filtered using clinical and genomic parameters described in detail below.
 
 ```bash
-candigv2-client [OUTPUT_TYPE] [FILTER]
+candig-download [OUTPUT_TYPE] [FILTER]
 ```
 
 ## Authentication
@@ -77,56 +77,56 @@ candigv2-client [OUTPUT_TYPE] [FILTER]
 1. **Fetch all available data types for all programs you have authorization for:**
 
     ```bash
-    candigv2-client -a --token YOUR_TOKEN
+    candig-download -a --token YOUR_TOKEN
     ```
 
 2. **Fetch clinical data for donors with mutation in a gene ID with verbose logging:**
 
     ```bash
-    candigv2-client -ll 10 -c --gene-id SLX9 --token YOUR_TOKEN
+    candig-download -ll 10 -c --gene-id SLX9 --token YOUR_TOKEN
     
     ```
 
 3. **Fetch variant data for donors with mutation in a gene ID in dry mode:**
 
     ```bash
-    candigv2-client -d -v --gene-id SLX9 --token YOUR_TOKEN
+    candig-download -d -v --gene-id SLX9 --token YOUR_TOKEN
     ```
 
 4. **Fetch all available data for donors with mutation in a gene ID:**
 
     ```bash
-    candigv2-client --gene-id SLX9 -a --token YOUR_TOKEN
+    candig-download --gene-id SLX9 -a --token YOUR_TOKEN
     ```
 
 5. **Fetch clinical and variant data where donors have mutations within the matching coordinates:**
 
     ```bash
-    candigv2-client -c -v --coord "chr21:10522300-10530000" --token YOUR_TOKEN
+    candig-download -c -v --coord "chr21:10522300-10530000" --token YOUR_TOKEN
     ```
 
 6. **Fetch all available data for donors with primary site identified as either `Colon` or `Bronchus and Lung`:**
 
     ```bash
-    candigv2-client -c --primary-site "Colon" "Bronchus and lung" --token YOUR_TOKEN
+    candig-download -c --primary-site "Colon" "Bronchus and lung" --token YOUR_TOKEN
     ```
 
 7. **Fetch all available data for donors that were treated with the drug `Durvalumab` (allowing for multiple case-sensitive options):**
 
     ```bash
-    candigv2-client -a --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
+    candig-download -a --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
     ```
 
 8. **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
 
      ```bash
-     candigv2-client -v --gene-id SLX9 --token YOUR_TOKEN
+     candig-download -v --gene-id SLX9 --token YOUR_TOKEN
      ```
 
 9. **Resume download**
 
     ```bash
-    candigv2-client -r candig_downloads/{session_id} --token YOUR_TOKEN
+    candig-download -r candig_downloads/{session_id} --token YOUR_TOKEN
     ```
 
 ## License
