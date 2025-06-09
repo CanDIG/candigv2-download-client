@@ -3,6 +3,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
+import datetime
 
 from client import auth
 from client import clinical_helpers
@@ -255,8 +256,8 @@ def main():
     #   4. Download and process variant data (if requested)
     # ===================================================
     session_dir = _setup_session_download(args.log_level, args.resume)
+    start_time = datetime.datetime.now()
 
-    # ===== Setup Logging =====
 
     if args.dry_run:
         logger.warning("DRY RUN MODE ENABLED")
@@ -366,6 +367,9 @@ def main():
         logger.info(
             "DRY RUN COMPLETED."
         )
+    end_time = datetime.datetime.now()
+    total_time = end_time - start_time
+    logger.info("Total time to run download session: {}.".format(total_time))
 
 
 if __name__ == "__main__":
