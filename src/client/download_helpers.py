@@ -423,7 +423,7 @@ def collect_metadata_for_file_item(
             size_bytes = file_metadata.get("size", "N/A")
             url = file_metadata.get("download_url", "N/A")
             logger.debug(
-                f"DRY-RUN (metadata collection): Candidate {file_metadata['filename']} ({size_bytes} bytes). URL: {url}. Target_Rel_Dir: {target_relative_dir}"
+                f"DRY-RUN (metadata collection): Candidate {file_metadata['filename']} ({round(size_bytes/1000000, 1)} MB). URL: {url}. Target_Rel_Dir: {target_relative_dir}"
             )
 
         return file_metadata
@@ -648,10 +648,11 @@ def collect_all_variant_metadata(
 
                 # Extract experiment object metadata
                 for experiment_obj in experiment_results_list:
-                    experiment_metadata_dict[program_sample_id] = experiment_obj.get("metadata")
-                    experiment_metadata_dict[program_sample_id]["experiment_id"] = experiment_obj.get('id')
-                    experiment_metadata_dict[program_sample_id]["program_id"] = experiment_obj.get('program')
-                    experiment_metadata_dict[program_sample_id]["submitter_sample_id"] = experiment_obj.get('name')
+                    if not is_dry_run:
+                        experiment_metadata_dict[program_sample_id] = experiment_obj.get("metadata")
+                        experiment_metadata_dict[program_sample_id]["experiment_id"] = experiment_obj.get('id')
+                        experiment_metadata_dict[program_sample_id]["program_id"] = experiment_obj.get('program')
+                        experiment_metadata_dict[program_sample_id]["submitter_sample_id"] = experiment_obj.get('name')
                     for content_item in experiment_obj.get("contents", []):
                         analysis_drs_name = content_item.get("name")
                         if not analysis_drs_name:
@@ -677,7 +678,7 @@ def collect_all_variant_metadata(
 
                             # Extract analysis object metadata
                             for response in analysis_drs_fed_resp:
-                                if "results" in response:
+                                if "results" in response and not is_dry_run:
                                     analysis_obj_results = response['results']['id']
                                     analysis_metadata_dict[analysis_obj_results] = response['results']['metadata']
                                     analysis_metadata_dict[analysis_obj_results]["file_id"] = analysis_obj_results
@@ -1090,10 +1091,11 @@ def run_variant_download_pipeline(
             federation_url=federation_url,
             is_dry_run=is_dry_run,
         )
-        write_experiment_metadata_to_csv(all_metadata[1]['experiment_metadata'],
-                                         Path(session_dir, "experiment_data.csv"))
-        write_experiment_metadata_to_csv(all_metadata[1]['analysis_metadata'],
-                                         Path(session_dir, "analysis_data.csv"))
+        if not is_dry_run:
+            write_experiment_metadata_to_csv(all_metadata[1]['experiment_metadata'],
+                                             Path(session_dir, "experiment_data.csv"))
+            write_experiment_metadata_to_csv(all_metadata[1]['analysis_metadata'],
+                                             Path(session_dir, "analysis_data.csv"))
         newly_collected_metadata = all_metadata[0]
         if newly_collected_metadata:
             write_variant_metadata_to_file(
@@ -1133,7 +1135,7 @@ def run_variant_download_pipeline(
         files_with_errors_in_meta = 0
         total_size_bytes_would_download = 0
 
-        print(
+        logger.info(
             f"\n--- DRY RUN: Processing of {variant_metadata_log_path} ---"
         )
         for item in all_pending_metadata:
@@ -1164,13 +1166,13 @@ def run_variant_download_pipeline(
                         or verification_status == "MATCH_SIZE"
                 ):
                     files_would_skip_validated += 1
-                    print(
-                        f"  - {filename} ({expected_size or 'N/A'} bytes) -> {target_path} (WOULD SKIP, {verification_status}: {verification_msg})"
+                    logger.info(
+                        f"  - {filename} ({round(expected_size/1000000, 1) or 'N/A'} MB) -> {target_path} (WOULD SKIP, {verification_status}: {verification_msg})"
                     )
                 elif verification_status == "NO_VALIDATION_CRITERIA":
                     files_already_exist_no_validate_criteria += 1
-                    print(
-                        f"  - {filename} ({expected_size or 'N/A'} bytes) -> {target_path} (EXISTS, {verification_status}: {verification_msg}. Policy implies re-download if not strictly validated.)"
+                    logger.info(
+                        f"  - {filename} ({round(expected_size/1000000, 1) or 'N/A'} MB) -> {target_path} (EXISTS, {verification_status}: {verification_msg}. Policy implies re-download if not strictly validated.)"
                     )
                     # re-download
                     files_would_redownload += 1
@@ -1182,16 +1184,16 @@ def run_variant_download_pipeline(
                     total_size_bytes_would_download += (
                         expected_size if isinstance(expected_size, int) else 0
                     )
-                    print(
-                        f"  - {filename} ({expected_size or 'N/A'} bytes) -> {target_path} (WOULD BE RE-DOWNLOADED due to {verification_status}: {verification_msg})"
+                    logger.info(
+                        f"  - {filename} ({round(expected_size/1000000, 1) or 'N/A'} MB) -> {target_path} (WOULD BE RE-DOWNLOADED due to {verification_status}: {verification_msg})"
                     )
             else:  # File does not exist
                 files_would_download += 1
                 total_size_bytes_would_download += (
                     expected_size if isinstance(expected_size, int) else 0
                 )
-                print(
-                    f"  - {filename}:{expected_size or 'N/A'} bytes"
+                logger.info(
+                    f"  - {filename}: {round(expected_size/1000000, 1) or 'N/A'} MB"
                 )
 
         print("\n--- DRY RUN Summary ---")
@@ -1214,7 +1216,7 @@ def run_variant_download_pipeline(
             f"  {files_with_errors_in_meta} files have errors/incomplete metadata and would be skipped."
         )
         logger.info(
-            f"  Estimated total download size (new + re-downloads): {total_size_bytes_would_download} bytes."
+            f"  Estimated total download size (new + re-downloads): {round(total_size_bytes_would_download/1000000, 1)} MB."
         )
         print("--- End DRY RUN ---")
         return True
