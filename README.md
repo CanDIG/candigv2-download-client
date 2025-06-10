@@ -36,7 +36,7 @@ PrimaryDiagnosis o|--o{ FollowUp : ""
 Specimen ||--o{ SampleRegistration : "" 
 Treatment ||--o| Radiation : "" 
 Treatment ||--o| Surgery : "" 
-Treatment ||--o{ Systemictherapy : "" 
+Treatment ||--o{ SystemicTherapy : "" 
 Treatment o|--o{ FollowUp : "" 
 ```
 
