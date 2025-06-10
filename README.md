@@ -16,8 +16,11 @@ The CanDIG Download Client provides a way to download clinical data from CanDIG 
 Clinical metadata is stored in CanDIG following the [MOHCCN Clinical Data Model](https://www.marathonofhopecancercentres.ca/researcher-hub/policies-and-guidelines). This tool will download clinical metadata as a set of up to 12 csv files saved into a directory named `clinical_data`, one for each schema in the data model. Each table can be joined using shared identifiers, these generally follow the pattern `submitter_<NAME_OF_SCHEMA>_id`. The `program_id` and `submitter_donor_id` appear in every table. Explicit links between schemas can be visualized as an ER diagram in the following dropdown: 
 
 <details>
+
 <summary>MOHCCN Clinical Data Model ER Diagram</summary>
+
 ```mermaid
+
 erDiagram
 
 Program ||--o{ Donor : ""
