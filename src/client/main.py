@@ -304,14 +304,9 @@ def main():
     if args.gene_id and args.coord:
         parser.error("Cannot use both --gene-id and --coord. Exiting.")
 
-    if args.variant and not (args.gene_id or args.coord):
+    if args.variant and not (args.gene_id or args.coord or args.resume):
         parser.error(
             "When using --variant, you must specify either --gene-id or --coord."
-        )
-    
-    if args.variant and args.dry_run and not (args.gene_id or args.coord):
-        parser.error(
-            "When using --variant with --dry-run, you must specify either --gene-id or --coord."
         )
 
     # ===== Authentication & Session =====
