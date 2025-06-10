@@ -7,7 +7,57 @@ A command-line tool for exporting clinical data from CanDIG servers.
 The CanDIG Download Client provides a way to download clinical data from CanDIG federated networks. This tool allows users to:
 
 - Connect to CanDIG servers with authentication
-- Select specific programs to download
+- Filter data types and donors to download
+
+## Data types
+
+### Clinical data
+
+Clinical metadata is stored in CanDIG following the [MOHCCN Clinical Data Model](https://www.marathonofhopecancercentres.ca/researcher-hub/policies-and-guidelines). This tool will download clinical metadata as a set of up to 12 csv files saved into a directory named `clinical_data`, one for each schema in the data model. Each table can be joined using shared identifiers, these generally follow the pattern `submitter_<NAME_OF_SCHEMA>_id`. The `program_id` and `submitter_donor_id` appear in every table. Explicit links between schemas can be visualized as an ER diagram in the following dropdown: 
+
+<details>
+<summary>MOHCCN Clinical Data Model ER Diagram</summary>
+```mermaid
+erDiagram
+
+Program ||--o{ Donor : ""
+Donor ||--o{ Comorbidity : ""
+Donor ||--o{ Biomarker : "" 
+Donor ||--o{ Exposure : "" 
+Donor ||--o{ FollowUp : "" 
+Donor ||--o{ PrimaryDiagnosis : ""
+Donor ||--o{ Treatment : "" 
+PrimaryDiagnosis ||--o{ Specimen : "" 
+PrimaryDiagnosis ||--o{ Treatment : "" 
+PrimaryDiagnosis o|--o{ FollowUp : ""
+Specimen ||--o{ SampleRegistration : "" 
+Treatment ||--o| Radiation : "" 
+Treatment ||--o| Surgery : "" 
+Treatment ||--o{ Systemictherapy : "" 
+Treatment o|--o{ FollowUp : "" 
+```
+
+</details>
+
+### Experiment & analysis data
+
+Experiment and analysis metadata are downloaded if Variant data is included in the overall download session. Experiment metadata is saved into a csv file called `experiment_data.csv` and contains information about how the sample was sequenced and provides a link to the `program_id` and `submitter_sample_id` in the clinical metadata. The analysis metadata contains information about how the raw data was analysed and informs a user which samples are contained in the file, and a link between the `submitter_sample_id` and the identifier used in the file to represent that sample. This file has one row per set of analysis file and index file, i.e. a vcf file and its linked tbi file would appear in one row. The file also contains all analysis files that matched the filtering query, whether they were downloaded or not. That is, if there are matching read (bam/cram) files that matched the query, their metadata will be added to this file, even though they won't be downloaded at this time. This serves to inform the user all the currently ingested analysis files for their query.  
+
+### Variant data 
+
+Variant data is downloaded as `vcf` and associated `tbi` index files. They are saved into a directory called `variant_data` with sub-directories for each program. `vcf` files typically contain variants from a single donor but two samples from a normal and a tumour specimen.
+
+Variant data downloads are limited to files under 500mb currently. 
+
+If your variant data download gets interrupted, please use the `--resume` argument (see `--help` for details). This argument will check the files for a specific directory and re-download any that did not complete downloading in a previous download session. If all files successfully downloaded, nothing will be downloaded.
+
+### Transcriptomic data
+
+We will be implementing transcriptomic matrix download in the future.
+
+### Read data
+
+It is currently not possible to download read data using this client.
 
 ## Install
 
@@ -42,6 +92,7 @@ candig-download [OUTPUT_TYPE] [FILTER]
 
 - You can provide the token using the `--token YOUR_TOKEN` argument.
 - If `--token` is not provided, the script will prompt you to enter the token securely in the terminal
+- To get a token, go to the data portal for your CanDIG deployment, login, then open the user profile menu in the top right corner. Click the 'Get API Token' button and click the token text to copy it. The token lasts 30 minutes and should be kept secure and not shared.
 
 ## Options
 
@@ -56,10 +107,10 @@ candig-download [OUTPUT_TYPE] [FILTER]
   - `--program-id`: Filter to donors from one or more program IDs.
 - **Output type:**
   - `--all|-a`: If specified, downloads all clinical and variant data specified (will eventually include transcriptome matrices too)
-  - `--clinical|-c`: If specified, downloads clinical data
-  - `--variant|-v`: If specified, downloads variant data
-  - `--log-level|-ll`: set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL). Default is WARNING (30)
-  - `--dry-run|-d`: If specified, shows what would be downloaded (record counts, file sizes). Note that variant dry-run would still download the clinical data for filtering purpose.
+  - `--clinical|-c`: If specified, downloads only clinical data
+  - `--variant|-v`: If specified, downloads variant data, can only be used if `--coord` or `--gene-id` is specified.
+  - `--log-level|-ll`: set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL). Default is INFO (20)
+  - `--dry-run|-d`: If specified, shows what would be downloaded (record counts, file sizes). Note that variant dry-run downloads the clinical data for filtering purpose.
   - `--resume|-r` continue the download by locating the existing session folder
   - *Coming soon* `--matrix|-m`: If specified, downloads transcriptomic matrices for filtered donors
 
@@ -128,6 +179,10 @@ candig-download [OUTPUT_TYPE] [FILTER]
     ```bash
     candig-download -r candig_downloads/{session_id} --token YOUR_TOKEN
     ```
+
+## Help
+
+If you get stuck using the program or find a bug, please file a [Github issue](https://github.com/CanDIG/candigv2-download-client/issues/new/choose) on this repo.
 
 ## License
 
