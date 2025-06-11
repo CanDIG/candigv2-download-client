@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-candigv2-client = "client.main:main"
+candig-download = "client.main:main"
 
 [project.optional-dependencies]
 dev = [
