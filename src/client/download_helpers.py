@@ -573,183 +573,219 @@ def get_programs_in_genomics(
 
 
 def collect_all_variant_metadata(
-        program_sample_ids: List[str],
-        federation_headers: Dict[str, str],
-        federation_url: str,
-        is_dry_run: bool = False,
+    program_sample_ids: List[str],
+    federation_headers: Dict[str, str],
+    federation_url: str,
+    is_dry_run: bool = False,
 ):
     """
-    Collects metadata for all provided program-sample IDs.
-
-    For each program-sample ID:
-      - Verifies the program is available in the genomics federation.
-      - Queries the federation for experiment and analysis DRS objects.
-      - For each sequence variation analysis found, collects file metadata (e.g., filename, size, checksums, download URL).
+    Use program_sample_ids to collect metadata for
+    variant analysis files to discover downloadable files
     """
     all_files_metadata_accumulator: List[Dict[str, Any]] = []
 
-    genomics_programs = get_programs_in_genomics(federation_url, federation_headers)
-    if not genomics_programs:
-        logger.error("No drs programs returned from any federated genomic service.")
-        return []
-    logger.info(
-        f"Found {len(genomics_programs)} relevant programs: {', '.join(genomics_programs)}"
-    )
-
-    variants_output_parent_dir_name = "variant_data"
-
-    valid_program_ids_to_process = []
-    experiment_metadata_dict = {}
-    analysis_metadata_dict = {}
+    # Step 1: Extract sample IDs and program IDs, then group by program
+    programs_to_samples = {}
     for ps_id in program_sample_ids:
         try:
-            program_id, _ = ps_id.split("~", 1)
-            if program_id in genomics_programs:
-                valid_program_ids_to_process.append(ps_id)
-            else:
-                logger.debug(
-                    f"Skipping '{ps_id}': program '{program_id}' not in fetched genomics programs list."
-                )
+            program_id, sample_id = ps_id.split("~", 1)
+            if program_id not in programs_to_samples:
+                programs_to_samples[program_id] = []
+            programs_to_samples[program_id].append(sample_id)
         except ValueError:
             logger.error(f"Invalid program_sample_id format: '{ps_id}'. Skipping.")
-
-    if not valid_program_ids_to_process:
-        logger.warning("No valid program-sample IDs remaining after filtering.")
-        return []
-
-    logger.info(
-        f"Processing {len(valid_program_ids_to_process)} program-sample IDs for metadata collection."
-    )
-    for program_sample_id in tqdm(
-            valid_program_ids_to_process,
-            desc="Samples metadata scan",
-            unit="sample",
-            position=0,
-    ):
-        try:
-            program_id, sample_id = program_sample_id.split("~", 1)
-        except ValueError:
             continue
 
-        exp_payload = genomics_helpers.build_experiment_request_payload(
-            program_id, sample_id
+    if not programs_to_samples:
+        logger.warning("No valid program-sample IDs found.")
+        return [], {}
+
+    logger.info(
+        f"Processing {len(programs_to_samples)} programs: {list(programs_to_samples.keys())}"
+    )
+
+    experiment_metadata_dict = {}
+    analysis_metadata_dict = {}
+    variants_output_parent_dir_name = "variant_data"
+
+    # Step 2: For each program, get list of DRS objects, then filter by sample_ids
+    for program_id, sample_ids in programs_to_samples.items():
+        # this endpoint is used to get all objects for a program
+        payload = {
+            "path": "ga4gh/drs/v1/objects",
+            "payload": {"program_id": program_id},
+            "method": "GET",
+            "service": config.GENOMICS_SERVICE,
+        }
+        drs_objects_response = execute_federation_call(
+            federation_url=federation_url,
+            headers=federation_headers,
+            payload=payload,
         )
-        exp_fed_responses = execute_federation_call(
-            federation_url, federation_headers, exp_payload
-        )
 
-        sample_has_any_seq_var_data = False
-        metadata_for_current_sample = []
+        if not drs_objects_response:
+            raise RuntimeError("Federation call error!")
 
-        if exp_fed_responses:
-            for fed_resp_item_exp in exp_fed_responses:
-                exp_loc = fed_resp_item_exp.get("location", "N/A")
-                experiment_results_list = fed_resp_item_exp.get("results", [])
+        # Step 3: Process DRS objects to find downloadable files
+        for fed_response in drs_objects_response:
+            status = fed_response.get("status")
+            location_name = fed_response.get("location", {}).get("name", "unknown")
 
-                # Extract experiment object metadata
-                for experiment_obj in experiment_results_list:
-                    if not is_dry_run:
-                        experiment_metadata_dict[program_sample_id] = experiment_obj.get("metadata")
-                        experiment_metadata_dict[program_sample_id]["experiment_id"] = experiment_obj.get('id')
-                        experiment_metadata_dict[program_sample_id]["program_id"] = experiment_obj.get('program')
-                        experiment_metadata_dict[program_sample_id]["submitter_sample_id"] = experiment_obj.get('name')
-                    for content_item in experiment_obj.get("contents", []):
-                        analysis_drs_name = content_item.get("name")
-                        if not analysis_drs_name:
-                            continue
+            if status != 200:
+                logger.warning(
+                    f"Skipping node {location_name} because of error {status}"
+                )
+                continue
 
-                        logger.debug(
-                            f"Fetching AnalysisDRS '{analysis_drs_name}' for {program_sample_id} from {exp_loc}"
-                        )
-                        analysis_drs_payload = (
-                            genomics_helpers.build_analysis_drs_request_payload(
-                                analysis_drs_name
+            drs_objects = fed_response.get("results", [])
+            # node could return empty list and still be valid 200
+            if not drs_objects:
+                continue
+
+            name_dict = {}
+            for obj in drs_objects:
+                name_dict[obj["name"]] = obj
+
+            # Find experiment objects (wgs/wts)
+            experiment_objects = []
+            for obj in drs_objects:
+                if obj.get("description") in ["wgs", "wts"]:
+                    obj_name = obj.get("name", "")
+                    if any(sample_id in obj_name for sample_id in sample_ids):
+                        experiment_objects.append(obj)
+
+                        # Store experiment metadata
+                        if not is_dry_run:
+                            program_sample_id = f"{program_id}~{obj_name}"
+                            experiment_metadata_dict[program_sample_id] = obj.get(
+                                "metadata", {}
                             )
+                            experiment_metadata_dict[program_sample_id][
+                                "experiment_id"
+                            ] = obj.get("id")
+                            experiment_metadata_dict[program_sample_id][
+                                "program_id"
+                            ] = program_id
+                            experiment_metadata_dict[program_sample_id][
+                                "submitter_sample_id"
+                            ] = obj_name
+
+            # Find analysis objects linked from experiments
+            analysis_objects = []
+            for exp_obj in experiment_objects:
+                for contents_obj in exp_obj.get("contents", []):
+                    analysis_name = contents_obj.get("name")
+                    if analysis_name and analysis_name in name_dict:
+                        analysis_objects.append(name_dict[analysis_name])
+
+            # Also find analysis objects that might not be linked to experiments
+            for obj in drs_objects:
+                metadata = obj.get("metadata") or {}
+                analysis_type = metadata.get("analysis_type")
+                if analysis_type in [
+                    "sequence_variation",
+                    "reference_alignment",
+                    "sequence_annotation",
+                ]:
+                    obj_name = obj.get("name", "")
+                    if any(sample_id in obj_name for sample_id in sample_ids):
+                        if obj not in analysis_objects:
+                            analysis_objects.append(obj)
+
+            # Extract downloadable files from analysis objects
+            for analysis_obj in analysis_objects:
+                if "contents" not in analysis_obj:
+                    continue
+
+                metadata = analysis_obj.get("metadata") or {}
+                analysis_type = metadata.get("analysis_type")
+
+                if analysis_type not in [
+                    "sequence_variation",
+                    "reference_alignment",
+                    "sequence_annotation",
+                ]:
+                    continue
+
+                # Store analysis metadata for all types
+                if not is_dry_run:
+                    analysis_id = analysis_obj.get("id")
+                    if analysis_id:
+                        analysis_metadata_dict[analysis_id] = metadata
+                        analysis_metadata_dict[analysis_id]["file_id"] = analysis_id
+                        analysis_metadata_dict[analysis_id]["program"] = (
+                            analysis_obj.get("program")
                         )
-                        analysis_drs_fed_resp = execute_federation_call(
-                            federation_url, federation_headers, analysis_drs_payload
+                        analysis_metadata_dict[analysis_id]["reference_genome"] = (
+                            analysis_obj.get("reference_genome")
                         )
+                        analysis_metadata_dict[analysis_id]["files"] = []
+                        analysis_metadata_dict[analysis_id]["samples"] = []
 
-                        if analysis_drs_fed_resp:
-                            relative_sample_files_dir = (
-                                    Path(variants_output_parent_dir_name)
-                                    / f"{program_id}"
-                            )
+                # Process contents for downloadable files
+                relative_sample_files_dir = (
+                    Path(variants_output_parent_dir_name) / program_id
+                )
 
-                            # Extract analysis object metadata
-                            for response in analysis_drs_fed_resp:
-                                if "results" in response and not is_dry_run:
-                                    analysis_obj_results = response['results']['id']
-                                    analysis_metadata_dict[analysis_obj_results] = response['results']['metadata']
-                                    analysis_metadata_dict[analysis_obj_results]["file_id"] = analysis_obj_results
-                                    analysis_metadata_dict[analysis_obj_results]["program"] = response['results'][
-                                        'program']
-                                    analysis_metadata_dict[analysis_obj_results]["reference_genome"] = \
-                                        response["results"]['reference_genome']
-                                    for linked_obj in response['results'].get('contents'):
-                                        if linked_obj['id'] not in ['analysis', 'index']:
-                                            try:
-                                                (analysis_metadata_dict[analysis_obj_results]['samples']
-                                                .append({
-                                                    "submitter_sample_id": linked_obj['name'],
-                                                    "analysis_sample_id": linked_obj['id'],
-                                                    "experiment_id": linked_obj['drs_uri'][0].rsplit('/', 1)[-1]
-                                                }))
-                                            except KeyError as e:
-                                                analysis_metadata_dict[analysis_obj_results]['samples'] = \
-                                                    [
-                                                        {
-                                                            "submitter_sample_id": linked_obj['name'],
-                                                            "analysis_sample_id": linked_obj['id'],
-                                                            "experiment_id": linked_obj['drs_uri'][0].rsplit('/', 1)[-1]
-                                                        }
-                                                    ]
-                                        else:
-                                            try:
-                                                analysis_metadata_dict[analysis_obj_results]['files'].append(
-                                                    linked_obj['drs_uri'][0].rsplit('/', 1)[-1])
-                                            except KeyError as e:
-                                                analysis_metadata_dict[analysis_obj_results]['files'] = [
-                                                    linked_obj['drs_uri'][0].rsplit('/', 1)[-1]]
-
-                            files_meta, has_seq_var_in_obj = (
-                                collect_metadata_for_analysis_drs_objects(
-                                    analysis_drs_fed_resp,
-                                    federation_headers,
-                                    federation_url,
-                                    relative_sample_files_dir,
-                                    is_dry_run,
-                                    tqdm_position=1,
-                                )
-                            )
-                            if has_seq_var_in_obj:
-                                sample_has_any_seq_var_data = True
-                                metadata_for_current_sample.extend(files_meta)
-                                if files_meta:
-                                    logger.debug(
-                                        f"Collected {len(files_meta)} file metadata entries for AnalysisDRS '{analysis_drs_name}'."
+                for contents_obj in analysis_obj.get("contents", []):
+                    content_id = contents_obj.get("id")
+                    if content_id in ["analysis", "index"]:
+                        if not is_dry_run and analysis_id:
+                            if contents_obj.get("drs_uri"):
+                                filename = contents_obj["drs_uri"][0].rsplit("/", 1)[-1]
+                                try:
+                                    analysis_metadata_dict[analysis_id]["files"].append(
+                                        filename
                                     )
-                        else:
-                            logger.warning(
-                                f"No federation response for AnalysisDRS: {analysis_drs_name}"
-                            )
+                                except KeyError:
+                                    analysis_metadata_dict[analysis_id]["files"] = [
+                                        filename
+                                    ]
 
-        if sample_has_any_seq_var_data and metadata_for_current_sample:
-            logger.debug(
-                f"Found sequence variation data for {program_sample_id}. Adding {len(metadata_for_current_sample)} file(s)."
-            )
-            all_files_metadata_accumulator.extend(metadata_for_current_sample)
-        elif sample_has_any_seq_var_data:
-            logger.debug(
-                f"Sequence variation analysis found for {program_sample_id}, but no downloadable files' metadata collected."
-            )
-        else:
-            logger.debug(
-                f"No sequence variation data found for sample {program_sample_id}."
-            )
+                        file_metadata = collect_metadata_for_file_item(
+                            file_item_info=contents_obj,
+                            file_type_label=content_id,
+                            federation_headers=federation_headers,
+                            federation_url=federation_url,
+                            target_relative_dir=relative_sample_files_dir,
+                            is_dry_run=is_dry_run,
+                        )
 
-    all_exp_metadata = {"experiment_metadata": experiment_metadata_dict,
-                        "analysis_metadata": analysis_metadata_dict}
+                        if file_metadata:
+                            # Only add to variant_metadata.jsonl if it's sequence_variation
+                            if analysis_type == "sequence_variation":
+                                all_files_metadata_accumulator.append(file_metadata)
+                    else:
+                        if not is_dry_run and analysis_id:
+                            try:
+                                analysis_metadata_dict[analysis_id]["samples"].append(
+                                    {
+                                        "submitter_sample_id": contents_obj.get(
+                                            "name", ""
+                                        ),
+                                        "analysis_sample_id": content_id,
+                                        "experiment_id": contents_obj.get(
+                                            "drs_uri", [""]
+                                        )[0].rsplit("/", 1)[-1]
+                                        if contents_obj.get("drs_uri")
+                                        else "",
+                                    }
+                                )
+                            except KeyError:
+                                analysis_metadata_dict[analysis_id]["samples"] = [
+                                    {
+                                        "submitter_sample_id": contents_obj.get(
+                                            "name", ""
+                                        ),
+                                        "analysis_sample_id": content_id,
+                                        "experiment_id": contents_obj.get(
+                                            "drs_uri", [""]
+                                        )[0].rsplit("/", 1)[-1]
+                                        if contents_obj.get("drs_uri")
+                                        else "",
+                                    }
+                                ]
+
     final_unique_metadata_list = []
     seen_keys_final = set()
     for meta_item in all_files_metadata_accumulator:
@@ -765,7 +801,12 @@ def collect_all_variant_metadata(
         else:
             final_unique_metadata_list.append(meta_item)
 
-    return final_unique_metadata_list, all_exp_metadata
+    all_metadata = {
+        "experiment_metadata": experiment_metadata_dict,
+        "analysis_metadata": analysis_metadata_dict,
+    }
+
+    return final_unique_metadata_list, all_metadata
 
 
 def write_experiment_metadata_to_csv(
