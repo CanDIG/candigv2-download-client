@@ -139,7 +139,7 @@ def aggregate_clinical_results(
 
         source_results = clinical_source_response.get("results", {}).get("data", {})
         if not source_results:
-            logger.warning(f"Warning: Skipping source {source_name}, data is empty")
+            logger.warning(f"Warning: Skipping source {source_name}, no matching data")
             continue
 
         data_found_in_source = False
