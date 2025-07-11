@@ -714,6 +714,7 @@ def collect_all_variant_metadata(
                     continue
 
                 # Store analysis metadata for all types
+                analysis_id = analysis_obj.get("id")
                 if not is_dry_run:
                     analysis_id = analysis_obj.get("id")
                     if analysis_id:
