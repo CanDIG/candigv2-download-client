@@ -729,7 +729,7 @@ def collect_all_variant_metadata(
                         analysis_metadata_dict[analysis_id]["samples"] = []
 
                 # Process contents for downloadable files
-                logger.info("Getting download information")
+                logger.info(f"Getting download information for {analysis_id}")
                 relative_sample_files_dir = (
                     Path(variants_output_parent_dir_name) / program_id
                 )
