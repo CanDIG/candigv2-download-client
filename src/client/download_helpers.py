@@ -614,6 +614,7 @@ def collect_all_variant_metadata(
     # Step 2: For each program, get list of DRS objects, then filter by sample_ids
     for program_id, sample_ids in programs_to_samples.items():
         # this endpoint is used to get all objects for a program
+        logger.info(f"Processing program {program_id}")
         payload = {
             "path": "ga4gh/drs/v1/objects",
             "payload": {"program_id": program_id},
@@ -650,6 +651,7 @@ def collect_all_variant_metadata(
                 name_dict[obj["name"]] = obj
 
             # Find experiment objects (wgs/wts)
+            logger.info("Saving experiment objects")
             experiment_objects = []
             for obj in drs_objects:
                 if obj.get("description") in ["wgs", "wts"]:
@@ -674,6 +676,7 @@ def collect_all_variant_metadata(
                             ] = obj_name
 
             # Find analysis objects linked from experiments
+            logger.info("saving analysis objects")
             analysis_objects = []
             for exp_obj in experiment_objects:
                 for contents_obj in exp_obj.get("contents", []):
@@ -726,6 +729,7 @@ def collect_all_variant_metadata(
                         analysis_metadata_dict[analysis_id]["samples"] = []
 
                 # Process contents for downloadable files
+                logger.info("Getting download information")
                 relative_sample_files_dir = (
                     Path(variants_output_parent_dir_name) / program_id
                 )
