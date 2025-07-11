@@ -699,7 +699,11 @@ def collect_all_variant_metadata(
                             analysis_objects.append(obj)
 
             # Extract downloadable files from analysis objects
-            for analysis_obj in analysis_objects:
+            for analysis_obj in tqdm(analysis_objects,
+                                     desc="Extracting download information",
+                                     unit="Analysis Object",
+                                     position=0
+                                     ):
                 if "contents" not in analysis_obj:
                     continue
 
@@ -730,7 +734,7 @@ def collect_all_variant_metadata(
                         analysis_metadata_dict[analysis_id]["samples"] = []
 
                 # Process contents for downloadable files
-                logger.info(f"Getting download information for {analysis_id}")
+                #logger.info(f"Getting download information for {analysis_id}")
                 relative_sample_files_dir = (
                     Path(variants_output_parent_dir_name) / program_id
                 )
