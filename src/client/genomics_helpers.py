@@ -70,32 +70,6 @@ def build_beacon_request_payload(
         "service": config.GENOMICS_SERVICE,
     }
 
-
-def build_experiment_request_payload(
-    program_id: str, submitter_sample_id: str
-) -> Optional[Dict[str, Any]]:
-    return {
-        "path": config.DRS_ENDPOINT,
-        "payload": {
-            "program_id": program_id,
-            "submitter_sample_id": submitter_sample_id,
-        },
-        "method": "GET",
-        "service": config.GENOMICS_SERVICE,
-    }
-
-
-def build_analysis_drs_request_payload(
-    analysis_file_name: str,
-) -> Optional[Dict[str, Any]]:
-    return {
-        "path": config.DRS_ENDPOINT + "/" + analysis_file_name,
-        "payload": {},
-        "method": "GET",
-        "service": config.GENOMICS_SERVICE,
-    }
-
-
 def build_file_drs_request_payload(
     analysis_name: str,
 ) -> Optional[Dict[str, Any]]:

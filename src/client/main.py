@@ -134,8 +134,9 @@ def _process_clinical_data(
             federation_url,
             headers,
             clinical_payload,
-            progress_callback=lambda: pbar.update(1),
         )
+        if clinical_results is not None:
+            pbar.update(1)
 
     if clinical_results is None:
         logger.critical("Clinical data request failed (API error or no response). Exiting.")
