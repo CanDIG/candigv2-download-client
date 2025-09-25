@@ -81,7 +81,16 @@ uv pip install -e .
 
 ## Configure CanDIG instance
 
-Change the value of `DEFAULT_BASE_URL` to the CanDIG instance you will be downloading from in `src/client/config.py`.
+Change the value of `DEFAULT_BASE_URL` to the CanDIG instance you will be downloading from in `src/client/config.py`.  This is the node and URL that you commonly log in to.
+For example:
+```bash
+# MOH-Q
+DEFAULT_BASE_URL = "https://candig.sd4h.ca"
+# BCGSC
+DEFAULT_BASE_URL = "https://candigv2.bcgsc.ca"
+# UHN
+DEFAULT_BASE_URL = "https://candig.uhnresearch.ca"
+```
 
 ## Usage
 
@@ -134,50 +143,56 @@ candig-download [OUTPUT_TYPE] [FILTER]
     candig-download -a --token YOUR_TOKEN
     ```
 
-2. **Fetch clinical data for donors with mutation in a gene ID with verbose logging:**
+2. **Fetch all available data for one program:**
+
+    ```bash
+    candig-download -a --program-id "MoHQ-CM-37" --token YOUR_TOKEN
+    ```
+
+3. **Fetch clinical data for donors with mutation in a gene ID with verbose logging:**
 
     ```bash
     candig-download -ll 10 -c --gene-id SLX9 --token YOUR_TOKEN
     
     ```
 
-3. **Fetch variant data for donors with mutation in a gene ID in dry mode:**
+4. **Fetch variant data for donors with mutation in a gene ID in dry mode:**
 
     ```bash
     candig-download -d -v --gene-id SLX9 --token YOUR_TOKEN
     ```
 
-4. **Fetch all available data for donors with mutation in a gene ID:**
+5. **Fetch all available data for donors with mutation in a gene ID:**
 
     ```bash
     candig-download --gene-id SLX9 -a --token YOUR_TOKEN
     ```
 
-5. **Fetch clinical and variant data where donors have mutations within the matching coordinates:**
+6. **Fetch clinical and variant data where donors have mutations within the matching coordinates:**
 
     ```bash
     candig-download -c -v --coord "chr21:10522300-10530000" --token YOUR_TOKEN
     ```
 
-6. **Fetch all available data for donors with primary site identified as either `Colon` or `Bronchus and Lung`:**
+7. **Fetch all available data for donors with primary site identified as either `Colon` or `Bronchus and Lung`:**
 
     ```bash
     candig-download -c --primary-site "Colon" "Bronchus and lung" --token YOUR_TOKEN
     ```
 
-7. **Fetch all available data for donors that were treated with the drug `Durvalumab` (allowing for multiple case-sensitive options):**
+8. **Fetch all available data for donors that were treated with the drug `Durvalumab` (allowing for multiple case-sensitive options):**
 
     ```bash
     candig-download -a --drug-name "Durvalumab" "durvalumab" --token YOUR_TOKEN
     ```
 
-8. **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
+9. **Download all variants for all donors from all authorized programs within the `SLX9` gene:**
 
      ```bash
      candig-download -v --gene-id SLX9 --token YOUR_TOKEN
      ```
 
-9. **Resume download**
+10. **Resume download**
 
     ```bash
     candig-download -r candig_downloads/{session_id} --token YOUR_TOKEN
