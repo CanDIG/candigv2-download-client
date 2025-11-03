@@ -181,6 +181,13 @@ def execute_federation_call(
             logger.debug(
                 f"Request to {path} successful (Status: {response.status_code})"
             )
+            for node in response.json():
+                try:
+                    if 'failed' in node['message']:
+                        logger.warning(f"Potential failure contacting node {node['location']['name']}")
+                        logger.warning(f"Error message: {node['message']}")
+                except KeyError as e:
+                    continue
             return response.json()
     except httpx.HTTPStatusError as e:
         logger.error(
