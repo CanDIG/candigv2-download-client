@@ -172,7 +172,7 @@ def execute_federation_call(
     """
     service = payload.get("service", "unknown_service")
     path = payload.get("path", "N/A")
-    logger.debug(f"Sending request to federation service for path: {path}")
+    logger.debug(f"Sending request to federation service for path: {path} with payload {payload}")
 
     try:
         with httpx.Client(timeout=config.TIMEOUT) as client:
@@ -181,6 +181,13 @@ def execute_federation_call(
             logger.debug(
                 f"Request to {path} successful (Status: {response.status_code})"
             )
+            for node in response.json():
+                try:
+                    if 'failed' in node['message']:
+                        logger.warning(f"Failure contacting node {node['location']['name']}")
+                        logger.warning(f"Error message: {node['message']}")
+                except KeyError as e:
+                    continue
             return response.json()
     except httpx.HTTPStatusError as e:
         logger.error(

@@ -148,6 +148,12 @@ candig-download [OUTPUT_TYPE] [FILTER]
     ```bash
     candig-download -a --program-id "MoHQ-CM-37" --token YOUR_TOKEN
     ```
+   
+    To specify multiple programs
+
+    ```bash
+    candig-download -a --program-id "MoHQ-CM-37" "POG" --token YOUR_TOKEN
+    ```
 
 3. **Fetch clinical data for donors with mutation in a gene ID with verbose logging:**
 
