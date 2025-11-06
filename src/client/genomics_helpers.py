@@ -77,7 +77,7 @@ def build_file_drs_request_payload(
         "path": config.DRS_ENDPOINT + "/" + analysis_name,
         "payload": {},
         "method": "GET",
-        "service": config.DRS_SERVICE,
+        "service": config.GENOMICS_SERVICE,
     }
 
 

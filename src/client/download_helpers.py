@@ -432,7 +432,7 @@ def _process_drs_objects_from_node(
                 # build download URL
                 host = file_obj.get("self_uri", "").split("/")[2]
                 protocol = config.DEFAULT_BASE_URL.split("://")[0]
-                download_url = f"{protocol}://{host}/drs/{DRS_OBJECTS_PATH}/{file_obj['id']}/download"
+                download_url = f"{protocol}://{host}/genomics/{DRS_OBJECTS_PATH}/{file_obj['id']}/download"
 
                 file_metadata = {
                     "filename": file_obj.get("name"),
@@ -486,7 +486,7 @@ def collect_metadata(
             "path": DRS_OBJECTS_PATH,
             "payload": {"program_id": program_id},
             "method": "GET",
-            "service": config.DRS_SERVICE,
+            "service": config.GENOMICS_SERVICE,
         }
         # this endpoint gets all objects for a program
         federated_responses = execute_federation_call(
