@@ -23,6 +23,7 @@ GENOMICS_SERVICE = "htsget"
 BEACON_ENDPOINT = "beacon/v2/g_variants"
 DRS_ENDPOINT = "ga4gh/drs/v1/objects"
 DRS_PROGRAM_ENDPOINT = "ga4gh/drs/v1/programs"
+DRS_SERVICE = "drs"
 
 # Clinical Service Config
 CLINICAL_SERVICE_ENDPOINT = "v3/download/clinical_data/"
