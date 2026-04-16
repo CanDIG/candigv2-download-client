@@ -903,7 +903,8 @@ def run_expression_download_pipeline(
             download_expression=True,
         )
 
-        append_records_to_jsonl(collected_metadata.files, expression_metadata_log_path)
+        expression_files = [f for f in collected_metadata.files if f.get("file_type") == "expression"]
+        append_records_to_jsonl(expression_files, expression_metadata_log_path)
         write_records_to_csv(
             collected_metadata.experiments, session_dir / EXPERIMENT_DATA_FILENAME
         )
