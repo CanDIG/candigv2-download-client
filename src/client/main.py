@@ -298,8 +298,6 @@ def main():
             disallowed_flags_with_resume.append("--all")
         if args.clinical:
             disallowed_flags_with_resume.append("--clinical")
-        if args.expression:
-            disallowed_flags_with_resume.append("--expression")
 
         filter_arg_names = [
             "gene_id",
@@ -315,16 +313,16 @@ def main():
 
         if disallowed_flags_with_resume:
             parser.error(
-                f"With --resume, data type flags (except implicitly --variant) or filter arguments "
-                f"({', '.join(disallowed_flags_with_resume)}) are not allowed. "
+                f"With --resume, the following flags are not allowed: "
+                f"{', '.join(disallowed_flags_with_resume)}. "
                 "Resume mode only accepts --log-level and --token."
             )
 
-        # Resume mode should be use for variant download only
+        # Resume mode: resume variant and expression
         args.variant = True
+        args.expression = True
         args.clinical = False
         args.all = False
-        args.expression = False
         for arg_name in filter_arg_names:
             setattr(args, arg_name, None)
 
