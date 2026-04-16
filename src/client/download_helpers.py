@@ -39,6 +39,10 @@ VARIANTS_OUTPUT_PARENT_DIR_NAME = "variant_data"
 DRS_OBJECTS_PATH = "ga4gh/drs/v1/objects"
 SUPPORTED_EXPERIMENT_TYPES = ["wgs", "wts"]
 VARIANT_ANALYSIS_TYPE = "sequence_variation"
+EXPRESSION_ANALYSIS_TYPE = "sequence_annotation"
+EXPRESSION_ANALYSIS_SUBTYPE = "expression_count"
+EXPRESSION_OUTPUT_PARENT_DIR_NAME = "expression_data"
+EXPRESSION_METADATA_FILENAME = "expression_metadata.jsonl"
 
 
 # ============================
@@ -335,16 +339,21 @@ def _parse_and_group_ids(program_sample_ids: List[str]) -> Dict[str, List[str]]:
     """Parses 'program~sample-id' strings into a dictionary."""
     programs_to_samples = {}
     for ps_id in program_sample_ids:
-        try:
+        if "~" in ps_id:
             program_id, sample_id = ps_id.split("~", 1)
             programs_to_samples.setdefault(program_id, []).append(sample_id)
-        except ValueError:
+        elif ps_id.strip():
+            programs_to_samples.setdefault(ps_id.strip(), [])
+        else:
             logger.error(f"Invalid program_sample_id format: '{ps_id}'. Skipping.")
     return programs_to_samples
 
 
 def _process_drs_objects_from_node(
-    drs_objects: List[Dict], program_id: str, sample_ids: List[str]
+    drs_objects: List[Dict],
+    program_id: str,
+    sample_ids: List[str],
+    download_expression: bool = False,
 ) -> CollectedMetadata:
     """
     Processes DRS objects:
@@ -364,7 +373,7 @@ def _process_drs_objects_from_node(
     experiment_objects = []
     for obj in drs_objects:
         if obj.get("description") in SUPPORTED_EXPERIMENT_TYPES:
-            if any(sample_id in obj.get("name", "") for sample_id in sample_ids):
+            if not sample_ids or any(sample_id in obj.get("name", "") for sample_id in sample_ids):
                 experiment_objects.append(obj)
                 program_sample_id = f"{program_id}~{obj['name']}"
                 exp_meta[program_sample_id] = obj.get("metadata", {})
@@ -440,6 +449,46 @@ def _process_drs_objects_from_node(
                     "checksums": file_obj.get("checksums", []),
                     "program_id": program_id,
                     "download_url": download_url,
+                    "file_type": "variant",
+                }
+
+                # skip files that exceed the maximum download size
+                if (
+                    file_metadata.get("size") is not None
+                    and file_metadata["size"] > config.DOWNLOAD_MAX_SIZE
+                ):
+                    logger.warning(
+                        f"File {file_metadata['filename']} ({file_metadata['size']} bytes) "
+                        f"exceeds size limit ({config.DOWNLOAD_MAX_SIZE} bytes). Skipping from download list."
+                    )
+                else:
+                    file_meta.append(file_metadata)
+
+        # if the file is an expression count analysis, it can be downloaded as TSV
+        if (
+            download_expression
+            and metadata.get("analysis_type") == EXPRESSION_ANALYSIS_TYPE
+            and metadata.get("analysis_attribute", {}).get("subtype") == EXPRESSION_ANALYSIS_SUBTYPE
+        ):
+            for content in analysis_obj.get("contents", []):
+                if not (file_obj := drs_objects_by_name.get(content.get("name"))):
+                    continue
+
+                if file_obj.get("description") in SUPPORTED_EXPERIMENT_TYPES:
+                    continue
+
+                # build download URL
+                host = file_obj.get("self_uri", "").split("/")[2]
+                protocol = config.DEFAULT_BASE_URL.split("://")[0]
+                download_url = f"{protocol}://{host}/drs/{DRS_OBJECTS_PATH}/{file_obj['id']}/download"
+
+                file_metadata = {
+                    "filename": file_obj.get("name"),
+                    "size": file_obj.get("size"),
+                    "checksums": file_obj.get("checksums", []),
+                    "program_id": program_id,
+                    "download_url": download_url,
+                    "file_type": "expression",
                 }
 
                 # skip files that exceed the maximum download size
@@ -463,6 +512,7 @@ def collect_metadata(
     program_sample_ids: List[str],
     federation_headers: Dict[str, str],
     federation_url: str,
+    download_expression: bool = False,
 ) -> CollectedMetadata:
     """
     Collect file metadata from federated services based on program-sample IDs.
@@ -506,7 +556,8 @@ def collect_metadata(
                 continue
 
             node_metadata = _process_drs_objects_from_node(
-                resp.get("results", []), program_id, sample_ids
+                resp.get("results", []), program_id, sample_ids,
+                download_expression=download_expression,
             )
             all_files.extend(node_metadata.files)
             all_experiments.update(node_metadata.experiments)
@@ -549,7 +600,12 @@ def determine_file_action(
         )
 
     program_id = meta_entry["program_id"]
-    target_dir = session_dir / VARIANTS_OUTPUT_PARENT_DIR_NAME / program_id
+    output_dir_name = (
+        EXPRESSION_OUTPUT_PARENT_DIR_NAME
+        if meta_entry.get("file_type") == "expression"
+        else VARIANTS_OUTPUT_PARENT_DIR_NAME
+    )
+    target_dir = session_dir / output_dir_name / program_id
     target_path = target_dir / filename
 
     try:
@@ -802,4 +858,84 @@ def run_variant_download_pipeline(
 
     failed_ops = sum(1 for r in download_results if not r.success)
     logger.info(f"All variant data and logs are in: {session_dir.resolve()}")
+    return failed_ops == 0
+
+
+def run_expression_download_pipeline(
+    program_ids: Optional[List[str]],
+    program_sample_ids: Optional[List[str]],
+    federation_headers: Dict[str, str],
+    download_headers: Dict[str, str],
+    federation_url: str,
+    session_dir: Path,
+    is_dry_run: bool = False,
+) -> bool:
+    """
+    Main controller for the expression count (TSV) download pipeline.
+    - Phase 1: Collects metadata for expression count files.
+    - Phase 2: Downloads files based on collected metadata.
+
+    program_ids: plain program IDs (all samples in each program); used when
+        no sample-level filter (Beacon/clinical) was applied.
+    program_sample_ids: 'program~sample_id' strings from a prior Beacon or
+        clinical search; when provided, restricts download to those samples.
+    """
+    expression_metadata_log_path = session_dir / EXPRESSION_METADATA_FILENAME
+    logger.info(f"Using session directory: {session_dir}")
+    logger.info(f"Expression file metadata log: {expression_metadata_log_path}")
+
+    # Build the unified ID list for collect_metadata:
+    # - plain program IDs -> all samples in that program
+    # - program~sample_id strings -> filtered by sample
+    combined_ids: List[str] = []
+    if program_sample_ids:
+        combined_ids.extend(program_sample_ids)
+    if program_ids:
+        combined_ids.extend(program_ids)
+
+    # Phase 1: Collect metadata
+    if combined_ids:
+        logger.info(
+            f"PHASE 1: Collecting expression metadata for {len(combined_ids)} ID(s)..."
+        )
+        collected_metadata = collect_metadata(
+            combined_ids, federation_headers, federation_url,
+            download_expression=True,
+        )
+
+        append_records_to_jsonl(collected_metadata.files, expression_metadata_log_path)
+        write_records_to_csv(
+            collected_metadata.experiments, session_dir / EXPERIMENT_DATA_FILENAME
+        )
+        write_records_to_csv(
+            collected_metadata.analyses, session_dir / ANALYSIS_DATA_FILENAME
+        )
+    else:
+        logger.info(
+            "No program or sample IDs provided for expression download; "
+            "processing existing metadata if available."
+        )
+
+    # Phase 2: Process download links from the log
+    all_pending_metadata = read_metadata_from_file(expression_metadata_log_path)
+    if not all_pending_metadata:
+        logger.info("No expression metadata found. Nothing to process. Exiting.")
+        return True
+
+    logger.info(
+        f"PHASE 2: Processing {len(all_pending_metadata)} total expression file entries from log."
+    )
+
+    if is_dry_run:
+        _perform_dry_run(all_pending_metadata, session_dir)
+        return True
+
+    download_results = download_files_from_collected_metadata(
+        all_pending_metadata, download_headers, session_dir
+    )
+
+    _generate_summary_report(download_results)
+
+    failed_ops = sum(1 for r in download_results if not r.success)
+    logger.info(f"All expression data and logs are in: {session_dir.resolve()}")
     return failed_ops == 0
