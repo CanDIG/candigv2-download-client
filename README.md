@@ -64,6 +64,8 @@ It is currently not possible to download read data using this client.
 
 ## Install
 
+### Linux/Unix/Mac
+
 ```bash
 # Install UV if you don't have it yet
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -78,6 +80,88 @@ source .venv/bin/activate
 # install dependencies
 uv pip install -e .
 ```
+
+### Windows users
+
+<details>
+<summary>Installation Guide: CanDIGv2 Download Client (Windows)</summary>
+
+This guide provides step-by-step instructions for Windows users to set up the **CanDIGv2 Download Client**. Because this is a command-line tool, we will use **PowerShell** to perform the installation.
+
+## Phase 1: Install Prerequisites
+
+You need two pieces of software installed on your system before the client can run.
+
+### 1. Install Python
+* Visit the [Python for Windows](https://www.python.org/downloads/windows/) page.
+* Download the latest **Python 3.x** installer.
+* **IMPORTANT:** When you run the installer, ensure the box labeled **"Add Python to PATH"** is checked.
+* Select **Install Now**.
+
+### 2. Install Git
+* Visit [git-scm.com](https://git-scm.com/download/win).
+* Download and run the installer.
+* Click **Next** through the default prompts (the default settings are sufficient).
+
+---
+
+## Phase 2: Setting Up the Repository
+
+Now we will download the tool's code and prepare an isolated space (virtual environment) for it to run.
+
+1.  Open the **Start Menu**, search for **PowerShell**, and open it.
+2.  **Clone the repository:** Copy and paste the following command, then press Enter:
+    ```powershell
+    git clone https://github.com/CanDIG/candigv2-download-client.git
+    ```
+3.  **Navigate into the folder:**
+    ```powershell
+    cd candigv2-download-client
+    ```
+4.  **Create a Virtual Environment:** (This ensures the tool's dependencies don't interfere with other software).
+    ```powershell
+    python -m venv venv
+    ```
+5.  **Activate the environment:**
+    ```powershell
+    .\venv\Scripts\activate
+    ```
+    *Note: You should now see `(venv)` appearing in parentheses at the start of your command prompt line.*
+
+---
+
+## Phase 3: Installing the Client
+
+With your environment active, you can now install the necessary dependencies and the tool itself.
+
+1.  **Install requirements:**
+    ```powershell
+    pip install -r requirements.txt
+    ```
+2.  **Install the client locally:**
+    ```powershell
+    pip install .
+    ```
+
+---
+
+## Phase 4: Basic Usage
+
+To verify that the installation was successful, check the help menu by typing:
+
+```powershell
+candig_download --help
+```
+
+Once confirmed you can run the program, continue with configuring your url and follow the subsequent instructions for downloading data.
+
+> [!TIP]
+> **Returning to the tool later:**
+> If you close PowerShell and want to use the tool again, you must navigate back to the folder and reactivate the environment:
+> 1. `cd candigv2-download-client`
+> 2. `.\venv\Scripts\activate`
+
+</details>
 
 ## Configure CanDIG instance
 
