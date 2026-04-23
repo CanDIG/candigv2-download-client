@@ -168,6 +168,28 @@ def _process_clinical_data(
 
     return []
 
+# --- Helper: Expression Data Processing ---
+def _process_expression_data(
+    args: argparse.Namespace,
+    headers: Dict[str, str],
+    federation_url: str,
+    session_dir: Path,
+    program_sample_ids: Optional[List[str]],
+):
+    print("\nProcessing expression data...")
+    plain_program_ids = args.program_id if not program_sample_ids else None
+    download_helpers.run_expression_download_pipeline(
+        program_ids=plain_program_ids,
+        program_sample_ids=program_sample_ids,
+        federation_headers=headers,
+        download_headers=headers,
+        federation_url=federation_url,
+        is_dry_run=args.dry_run,
+        session_dir=session_dir,
+    )
+    logger.info(f"Expression data saved to: {session_dir / 'expression_data'}")
+
+
 # --- Helper: Variant Data Processing ---
 def _process_variant_data(
     args: argparse.Namespace,
@@ -210,13 +232,18 @@ def main():
     # Controls what data will be downloaded
     output_group = parser.add_argument_group("Output data options")
     output_group.add_argument(
-        "-a", "--all", action="store_true", help="Download all data types"
+        "-a", "--all", action="store_true",
+        help="Download all data types (clinical, variant, expression)"
     )
     output_group.add_argument(
         "-c", "--clinical", action="store_true", help="Download clinical data"
     )
     output_group.add_argument(
         "-v", "--variant", action="store_true", help="Download variant data"
+    )
+    output_group.add_argument(
+        "-e", "--expression", action="store_true",
+        help="Download expression files"
     )
 
     # ===== Donor Filtering Options =====
@@ -286,21 +313,22 @@ def main():
 
         if disallowed_flags_with_resume:
             parser.error(
-                f"With --resume, data type flags (except implicitly --variant) or filter arguments "
-                f"({', '.join(disallowed_flags_with_resume)}) are not allowed. "
+                f"With --resume, the following flags are not allowed: "
+                f"{', '.join(disallowed_flags_with_resume)}. "
                 "Resume mode only accepts --log-level and --token."
             )
 
-        # Resume mode should be use for variant download only
+        # Resume mode: resume variant and expression
         args.variant = True
+        args.expression = True
         args.clinical = False
         args.all = False
         for arg_name in filter_arg_names:
             setattr(args, arg_name, None)
 
     # ===== Normal Mode =====
-    elif not (args.all or args.clinical or args.variant):
-        parser.error("Specify at least one data type (-a, -c, -v) or use --resume.")
+    elif not (args.all or args.clinical or args.variant or args.expression):
+        parser.error("Specify at least one data type (-a, -c, -v, -e) or use --resume.")
 
     if args.gene_id and args.coord:
         parser.error("Cannot use both --gene-id and --coord. Exiting.")
@@ -308,6 +336,13 @@ def main():
     if args.variant and not (args.gene_id or args.coord or args.resume):
         parser.error(
             "When using --variant, you must specify either --gene-id or --coord."
+        )
+
+    if args.expression and not (
+        args.gene_id or args.coord or args.program_id or args.resume
+    ):
+        parser.error(
+            "When using --expression, you must specify --program-id, --gene-id, or --coord."
         )
 
     # ===== Authentication & Session =====
@@ -353,6 +388,12 @@ def main():
     # --- Variant Data Processing ---
     if args.variant or args.all:
         _process_variant_data(
+            args, headers, federation_url, session_dir, new_biosample_ids
+        )
+
+    # --- Expression Data Processing ---
+    if args.expression or args.all:
+        _process_expression_data(
             args, headers, federation_url, session_dir, new_biosample_ids
         )
 

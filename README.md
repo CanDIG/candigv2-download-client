@@ -1,10 +1,10 @@
 # CanDIGv2 Download Client
 
-A command-line tool for exporting clinical data from CanDIG servers.
+A command-line tool for exporting clinical, variant, and expression data from CanDIG servers.
 
 ## Overview
 
-The CanDIG Download Client provides a way to download clinical data from CanDIG federated networks. This tool allows users to:
+The CanDIG Download Client provides a way to download clinical, variant, and expression data from CanDIG federated networks. This tool allows users to:
 
 - Connect to CanDIG servers with authentication
 - Filter data types and donors to download
@@ -56,7 +56,14 @@ If your variant data download gets interrupted, please use the `--resume` argume
 
 ### Transcriptomic data
 
-We will be implementing transcriptomic matrix download in the future.
+Expression count data is downloaded as TSV files and saved into a directory called `expression_data` with sub-directories for each program.
+
+Expression can be downloaded in two ways:
+
+- **By program** (`--program-id`): fetches expression files for all samples in the specified program
+- **By genomic region** (`--gene-id` or `--coord`): fetches expression files by biosamples
+
+Expression downloads are subject to the same 500 MB per-file size limit as variant downloads.
 
 ### Read data
 
@@ -94,7 +101,7 @@ DEFAULT_BASE_URL = "https://candig.uhnresearch.ca"
 
 ## Usage
 
-The program can download either clinical only, variant only, or all data a user is authorized for using the following arguments: `--clinical` or `--variant` or `--all`. The data downloaded can be further filtered using clinical and genomic parameters described in detail below.
+The program can download clinical, variant, expression, or all data a user is authorized for using the following arguments: `--clinical`, `--variant`, `--expression`, or `--all`. The data downloaded can be further filtered using clinical and genomic parameters described in detail below.
 
 ```bash
 candig-download [OUTPUT_TYPE] [FILTER]
@@ -118,13 +125,13 @@ candig-download [OUTPUT_TYPE] [FILTER]
   - `--primary-site`: Filter to donors with a tumour diagnosed in one or more primary sites.
   - `--program-id`: Filter to donors from one or more program IDs.
 - **Output type:**
-  - `--all|-a`: If specified, downloads all clinical and variant data specified (will eventually include transcriptome matrices too)
+  - `--all|-a`: If specified, downloads all data types (clinical, variant, and expression)
   - `--clinical|-c`: If specified, downloads only clinical data
-  - `--variant|-v`: If specified, downloads variant data, can only be used if `--coord` or `--gene-id` is specified.
+  - `--variant|-v`: If specified, downloads variant data; requires `--coord` or `--gene-id`
+  - `--expression|-e`: If specified, downloads expression count TSV files; requires `--program-id`, `--gene-id`, or `--coord`
   - `--log-level|-ll`: set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL). Default is INFO (20)
   - `--dry-run|-d`: If specified, shows what would be downloaded (record counts, file sizes). Note that variant dry-run downloads the clinical data for filtering purpose.
   - `--resume|-r` continue the download by locating the existing session folder
-  - *Coming soon* `--matrix|-m`: If specified, downloads transcriptomic matrices for filtered donors
 
 > [!Tip]
 > Filters must be individually quoted strings.
@@ -198,7 +205,25 @@ candig-download [OUTPUT_TYPE] [FILTER]
      candig-download -v --gene-id SLX9 --token YOUR_TOKEN
      ```
 
-10. **Resume download**
+10. **Fetch expression data for all samples in a program:**
+
+    ```bash
+    candig-download -e --program-id "MoHQ-CM-37" --token YOUR_TOKEN
+    ```
+
+11. **Fetch expression data for donors with a mutation in a gene:**
+
+    ```bash
+    candig-download -e --gene-id SLX9 --token YOUR_TOKEN
+    ```
+
+12. **Fetch expression data for donors with a mutation in a genomic region:**
+
+    ```bash
+    candig-download -e --coord "chr21:10522300-10530000" --token YOUR_TOKEN
+    ```
+
+13. **Resume download**
 
     ```bash
     candig-download -r candig_downloads/{session_id} --token YOUR_TOKEN
