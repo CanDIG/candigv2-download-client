@@ -71,6 +71,8 @@ It is currently not possible to download read data using this client.
 
 ## Install
 
+### Linux/Unix/Mac
+
 ```bash
 # Install UV if you don't have it yet
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -86,9 +88,94 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
+### Windows users
+
+<details>
+<summary>Installation Guide: CanDIGv2 Download Client (Windows)</summary>
+
+This guide provides step-by-step instructions for Windows users to set up the **CanDIGv2 Download Client**.  Windows installers will be used to perform the necessary software installations.
+
+## Phase 1: Install Prerequisites
+
+You need two pieces of software installed on your system before the download client can run.
+
+### 1. Install Python
+* Visit the [Python for Windows](https://www.python.org/downloads/windows/) page.
+* Download the latest **Python install manager**.
+* During the install, choose the following options:
+    * Update settings to allow paths longer than 260 characters? [no].
+    * Add commands directory to your PATH now? [yes].
+    * Install CPython now? [yes]
+
+### 2. Install Git
+* Visit [git-scm.com](https://git-scm.com/install/windows).
+* Download and run the latest x64 version of Git for Windows.  Click **Next** through the all of the default prompts, except:
+    * When choosing the default editor used by Git, select "Use Notepad as Git's default editor".
+
+---
+
+## Phase 2: Setting Up the Repository
+
+Now we will download the tool's code and prepare an isolated space (virtual environment) for it to run.
+
+1.  In the **Start Menu**, search for **Command Prompt**, and open it.
+2.  **Clone the repository:** Copy and paste the following command, then press Enter:
+    ```bash
+    git clone https://github.com/CanDIG/candigv2-download-client.git
+    ```
+3.  **Navigate into the folder:**
+    ```bash
+    cd candigv2-download-client
+    ```
+4.  **Create a Virtual Environment:** (This ensures the tool's dependencies don't interfere with other software).
+    ```bash
+    python -m venv venv
+    ```
+5.  **Activate the environment:**
+    ```bash
+    .\venv\Scripts\activate.bat
+    ```
+    *Note: You should now see `(venv)` appearing in parentheses at the start of your command prompt line.*
+
+---
+
+## Phase 3: Installing the Client
+
+With your virtual environment (venv) environment active, you can now install the necessary dependencies and the tool itself.
+
+1.  **Install requirements:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  **Install the client locally:**
+    ```bash
+    pip install .
+    ```
+Any notices or offers to upgrade pip may be safely ignored.
+
+---
+
+## Phase 4: Basic Usage
+
+To verify that the installation was successful, check the help menu by typing:
+
+```bash
+candig_download --help
+```
+
+Once this confirms that the program runs, continue with configuring your URL and follow the subsequent instructions for downloading data.
+
+> [!TIP]
+> **Returning to the tool later:**
+> If you close the Command prompt and want to use the tool again, you must navigate back to the folder and reactivate the environment:
+> 1. `cd candigv2-download-client`
+> 2. `.\venv\Scripts\activate.bat`
+
+</details>
+
 ## Configure CanDIG instance
 
-Change the value of `DEFAULT_BASE_URL` to the CanDIG instance you will be downloading from in `src/client/config.py`.  This is the node and URL that you commonly log in to.
+Change the value of `DEFAULT_BASE_URL` to the CanDIG instance you will be downloading from in `candigv2-download-client/src/client/config.py`.  This is the node and URL that you commonly log in to.
 For example:
 ```bash
 # MOH-Q
@@ -98,7 +185,7 @@ DEFAULT_BASE_URL = "https://candigv2.bcgsc.ca"
 # UHN
 DEFAULT_BASE_URL = "https://candig.uhnresearch.ca"
 ```
-
+If using Windows, you may navigate with Windows Explorer to config.py and open it with Notepad.  Set the DEFAULT_BASE_URL to your local CanDIG node and save.
 ## Usage
 
 The program can download clinical, variant, expression, or all data a user is authorized for using the following arguments: `--clinical`, `--variant`, `--expression`, or `--all`. The data downloaded can be further filtered using clinical and genomic parameters described in detail below.
