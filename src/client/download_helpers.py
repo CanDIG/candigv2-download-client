@@ -206,7 +206,7 @@ def execute_federation_call(
                     if 'failed' in node['message']:
                         logger.warning(f"Failure contacting node {node['location']['name']}")
                         logger.warning(f"Error message: {node['message']}")
-                except KeyError as e:
+                except KeyError:
                     continue
             return response.json()
     except httpx.HTTPStatusError as e:

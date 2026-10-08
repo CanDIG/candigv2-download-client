@@ -25,7 +25,7 @@ def parse_coord_string(coord_string: str):
         sys.exit()
     except ValueError:
         logger.error(
-            f"Coordinate values invalid: start and end coordinates must be integers. Please ensure it follows the pattern <chrom>:<start>-<end>."
+            "Coordinate values invalid: start and end coordinates must be integers. Please ensure it follows the pattern <chrom>:<start>-<end>."
         )
         sys.exit()
     if chrom not in all_chromosomes:
