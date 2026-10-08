@@ -81,6 +81,20 @@ def build_file_drs_request_payload(
     }
 
 
+def beacon_node_has_data(node: Dict[str, Any]) -> bool:
+    """Return True if a single node's Beacon response contains >= 1 sample hit."""
+    results = node.get("results")
+    if not results:
+        return False
+    estimated_results = results.get("estimatedResults", {})
+    if not estimated_results:
+        return False
+    for sample_list in estimated_results.values():
+        if isinstance(sample_list, list) and sample_list:
+            return True
+    return False
+
+
 def extract_unique_program_sample_ids_from_beacon_results(
     beacon_results: Optional[List[Dict[str, Any]]],
 ) -> List[str]:

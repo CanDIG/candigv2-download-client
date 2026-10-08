@@ -9,6 +9,15 @@ The CanDIG Download Client provides a way to download clinical, variant, and exp
 - Connect to CanDIG servers with authentication
 - Filter data types and donors to download
 
+### Automatic node selection
+
+CanDIG is a federated network, so a query is normally fanned out to every node. To avoid querying nodes that cannot hold matching data, the client inspects the first (discovery) response for your filters — the Beacon search for `--gene-id`/`--coord`, or the clinical search for clinical filters such as `--program-id` — and restricts the subsequent (and more expensive) variant/expression lookups to only the nodes that actually returned matching data. This happens automatically based on the arguments you already provide; there is no extra flag to set.
+
+Nodes that return an **error** during the discovery query are also excluded for the rest of the session, and a `WARNING` is written to the log so you can see that their data was skipped (re-run, or use `--resume`, once the node recovers).
+
+> [!Note]
+> This feature relies on the `exclude_servers` option in the CanDIG federation service and requires the federation service to be version **v3.2.0 or later**. Against older servers the client still works, but queries are fanned out to all nodes.
+
 ## Data types
 
 ### Clinical data

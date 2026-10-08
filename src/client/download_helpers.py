@@ -20,7 +20,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import httpx
 import pandas as pd
@@ -167,15 +167,31 @@ def execute_federation_call(
     federation_url: str,
     headers: Dict[str, str],
     payload: Dict[str, Any],
+    exclude_servers: Optional[List[str]] = None,
 ) -> Optional[List[Dict[str, Any]]]:
     """
     Makes a POST request to the federation endpoint and handles errors.
+
+    If ``exclude_servers`` is provided, their names are added to the inner
+    payload as a pipe-delimited ``exclude_servers`` string. The federation
+    service (>= v3.2.0) removes these nodes from the fanout, so the request is
+    only sent to the remaining nodes.
 
     Returns:
         A list of responses from federated servers, or None on failure.
     """
     service = payload.get("service", "unknown_service")
     path = payload.get("path", "N/A")
+
+    if exclude_servers:
+        inner_payload = payload.setdefault("payload", {})
+        if isinstance(inner_payload, dict):
+            inner_payload["exclude_servers"] = "|".join(exclude_servers)
+            logger.debug(
+                f"Excluding {len(exclude_servers)} node(s) from fanout for {path}: "
+                f"{exclude_servers}"
+            )
+
     logger.debug(f"Sending request to federation service for path: {path} with payload {payload}")
 
     try:
@@ -212,6 +228,107 @@ def execute_federation_call(
             f"Network/connection error during '{service}' request for {path}: {e}"
         )
         return None
+
+
+# ==========================================
+# === Federation node selection (routing) ===
+# ==========================================
+
+
+def _node_errored(node: Dict[str, Any]) -> bool:
+    """Return True if a federated node response indicates an error/failure."""
+    if node.get("error"):
+        return True
+    status = node.get("status")
+    if status is not None and status != 200:
+        return True
+    message = node.get("message")
+    if isinstance(message, str) and "failed" in message.lower():
+        return True
+    return False
+
+
+def classify_federation_nodes(
+    federated_results: Optional[List[Dict[str, Any]]],
+    has_data_fn: Callable[[Dict[str, Any]], bool],
+) -> Tuple[Set[str], Set[str], Set[str]]:
+    """
+    Classify the nodes in a federated response by their ``location.name``.
+
+    Returns a tuple of (contacted, with_data, errored) name sets. Nodes whose
+    response has no identifiable name are ignored (we cannot safely exclude a
+    node we cannot name).
+    """
+    contacted: Set[str] = set()
+    with_data: Set[str] = set()
+    errored: Set[str] = set()
+    if not federated_results:
+        return contacted, with_data, errored
+
+    for node in federated_results:
+        if not isinstance(node, dict):
+            continue
+        name = (node.get("location") or {}).get("name")
+        if not name:
+            continue
+        contacted.add(name)
+        if _node_errored(node):
+            errored.add(name)
+        elif has_data_fn(node):
+            with_data.add(name)
+
+    return contacted, with_data, errored
+
+
+def compute_servers_to_exclude(
+    federated_results: Optional[List[Dict[str, Any]]],
+    has_data_fn: Callable[[Dict[str, Any]], bool],
+    existing_exclude: Optional[List[str]] = None,
+    protected_nodes: Optional[Set[str]] = None,
+) -> Tuple[List[str], Set[str]]:
+    """
+    Build the list of node names to exclude from subsequent federated calls.
+
+    A node is excluded when it was contacted but returned no matching data
+    (whether because it cleanly matched nothing or because it errored). Errored
+    nodes are logged at WARNING so it is visible that their data is skipped this
+    session; cleanly empty nodes are logged at INFO.
+
+    Nodes that returned data are never excluded, and neither are ``protected_nodes``
+    -- nodes an earlier discovery step already confirmed hold matching data (e.g.
+    a node with variant hits from Beacon must not be dropped if its clinical
+    response is later empty). ``existing_exclude`` names are carried forward so
+    exclusions accumulate across discovery steps.
+
+    Returns a tuple of (exclude_list, data_nodes) where ``data_nodes`` is the
+    accumulated set of nodes confirmed to hold data (this step plus any
+    ``protected_nodes``), suitable to pass as ``protected_nodes`` to the next step.
+    """
+    exclude: Set[str] = set(existing_exclude or [])
+    contacted, with_data, errored = classify_federation_nodes(
+        federated_results, has_data_fn
+    )
+    protected: Set[str] = set(protected_nodes or []) | with_data
+
+    for name in sorted(errored - protected):
+        logger.warning(
+            f"Node '{name}' returned an error during the discovery query and will be "
+            f"excluded from subsequent queries. Data on this node will not be "
+            f"downloaded in this session."
+        )
+        exclude.add(name)
+
+    for name in sorted(contacted - protected - errored):
+        logger.info(
+            f"Node '{name}' returned no matching data; excluding it from subsequent "
+            f"queries."
+        )
+        exclude.add(name)
+
+    # A protected node must never remain excluded, even if a prior step added it.
+    exclude -= protected
+
+    return sorted(exclude), protected
 
 
 def download_file(
@@ -513,6 +630,7 @@ def collect_metadata(
     federation_headers: Dict[str, str],
     federation_url: str,
     download_expression: bool = False,
+    exclude_servers: Optional[List[str]] = None,
 ) -> CollectedMetadata:
     """
     Collect file metadata from federated services based on program-sample IDs.
@@ -540,7 +658,7 @@ def collect_metadata(
         }
         # this endpoint gets all objects for a program
         federated_responses = execute_federation_call(
-            federation_url, federation_headers, payload
+            federation_url, federation_headers, payload, exclude_servers=exclude_servers
         )
         if not federated_responses:
             logger.error(
@@ -803,6 +921,7 @@ def run_variant_download_pipeline(
     federation_url: str,
     session_dir: Path,
     is_dry_run: bool = False,
+    exclude_servers: Optional[List[str]] = None,
 ) -> bool:
     """
     Main controller for the variant download pipeline.
@@ -819,7 +938,8 @@ def run_variant_download_pipeline(
             f"PHASE 1: Collecting metadata for {len(program_sample_ids)} program-sample ID(s)..."
         )
         collected_metadata = collect_metadata(
-            program_sample_ids, federation_headers, federation_url
+            program_sample_ids, federation_headers, federation_url,
+            exclude_servers=exclude_servers,
         )
 
         # Save all collected metadata
@@ -869,6 +989,7 @@ def run_expression_download_pipeline(
     federation_url: str,
     session_dir: Path,
     is_dry_run: bool = False,
+    exclude_servers: Optional[List[str]] = None,
 ) -> bool:
     """
     Main controller for the expression count (TSV) download pipeline.
@@ -901,6 +1022,7 @@ def run_expression_download_pipeline(
         collected_metadata = collect_metadata(
             combined_ids, federation_headers, federation_url,
             download_expression=True,
+            exclude_servers=exclude_servers,
         )
 
         expression_files = [f for f in collected_metadata.files if f.get("file_type") == "expression"]
