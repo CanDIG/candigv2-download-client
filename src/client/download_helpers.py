@@ -36,8 +36,11 @@ EXPERIMENT_DATA_FILENAME = "experiment_data.csv"
 ANALYSIS_DATA_FILENAME = "analysis_data.csv"
 VARIANTS_OUTPUT_PARENT_DIR_NAME = "variant_data"
 
-DRS_OBJECTS_PATH = "ga4gh/drs/v1/objects"
 SUPPORTED_EXPERIMENT_TYPES = ["wgs", "wts"]
+# drs-service v7.0.0 adds a Run schema: experiment contents now also link to
+# "raw_reads" Run objects (siblings of analyses). These are not analyses and
+# must be skipped when walking an experiment's contents.
+RUN_DESCRIPTION = "raw_reads"
 VARIANT_ANALYSIS_TYPE = "sequence_variation"
 EXPRESSION_ANALYSIS_TYPE = "sequence_annotation"
 EXPRESSION_ANALYSIS_SUBTYPE = "expression_count"
@@ -216,7 +219,12 @@ def execute_federation_call(
         try:
             details = e.response.json()
             logger.error(f"Error details: {json.dumps(details)}")
-            if details.get("error") == "Key not authorised":
+            # Federation may return a dict OR a list of per-node error objects.
+            error_items = details if isinstance(details, list) else [details]
+            if any(
+                isinstance(item, dict) and item.get("error") == "Key not authorised"
+                for item in error_items
+            ):
                 logger.error(
                     "Authorization error: Your token may have expired. Please retry with a new token."
                 )
@@ -329,6 +337,86 @@ def compute_servers_to_exclude(
     exclude -= protected
 
     return sorted(exclude), protected
+
+
+def select_nodes_hosting_programs(
+    federation_url: str,
+    headers: Dict[str, str],
+    program_ids: Optional[List[str]],
+) -> Tuple[List[str], Set[str]]:
+    """
+    Pre-select the federation nodes that host the requested program(s).
+
+    Fans out the lightweight DRS ``/programs`` query (each node returns only the
+    list of program IDs the caller is authorised to see there) and determines
+    which nodes host any of ``program_ids``. This runs *before* the expensive
+    discovery queries (Beacon, clinical) so those can be narrowed to the hosting
+    node(s) instead of fanning out to every node.
+
+    Returns a tuple of ``(exclude_servers, hosting_nodes)``:
+      - ``exclude_servers``: contacted nodes that host none of the requested
+        programs, suitable to pass straight to ``execute_federation_call`` /
+        ``compute_servers_to_exclude``.
+      - ``hosting_nodes``: nodes confirmed to hold a requested program, suitable
+        to pass as ``protected_nodes`` so they are never dropped later.
+
+    On any failure or ambiguity (discovery call failed, no node named, or no node
+    reported a requested program) it returns ``([], set())`` so callers fall back
+    to querying all nodes -- pre-selection can never make a query worse.
+    """
+    wanted = {p for p in (program_ids or []) if p}
+    if not wanted:
+        return [], set()
+
+    payload = {
+        "path": config.DRS_PROGRAM_ENDPOINT,
+        "payload": {},
+        "method": "GET",
+        "service": config.DRS_SERVICE,
+    }
+    responses = execute_federation_call(federation_url, headers, payload)
+    if not responses:
+        logger.warning(
+            "Program pre-selection: DRS /programs discovery failed; "
+            "querying all nodes."
+        )
+        return [], set()
+
+    contacted: Set[str] = set()
+    hosting: Set[str] = set()
+    for node in responses:
+        if not isinstance(node, dict):
+            continue
+        name = (node.get("location") or {}).get("name")
+        if not name:
+            continue
+        contacted.add(name)
+        if node.get("status") != 200:
+            continue
+        results = node.get("results") or []
+        node_programs = {p for p in results if isinstance(p, str)}
+        if wanted & node_programs:
+            hosting.add(name)
+
+    if not hosting:
+        logger.warning(
+            f"Program pre-selection: no node reported program(s) {sorted(wanted)}; "
+            "querying all nodes."
+        )
+        return [], set()
+
+    exclude = sorted(contacted - hosting)
+    if exclude:
+        logger.info(
+            f"Program pre-selection: program(s) {sorted(wanted)} hosted on "
+            f"{sorted(hosting)}; excluding {exclude} from discovery queries."
+        )
+    else:
+        logger.info(
+            f"Program pre-selection: program(s) {sorted(wanted)} hosted on "
+            f"{sorted(hosting)} (all contacted nodes host data)."
+        )
+    return exclude, hosting
 
 
 def download_file(
@@ -507,6 +595,10 @@ def _process_drs_objects_from_node(
     for exp_obj in experiment_objects:
         for content in exp_obj.get("contents", []):
             if analysis_obj := drs_objects_by_name.get(content.get("name")):
+                # Skip Run objects (raw reads), which now also appear in an
+                # experiment's contents alongside analyses (drs-service v7.0.0).
+                if analysis_obj.get("description") == RUN_DESCRIPTION:
+                    continue
                 analysis_objects.append(analysis_obj)
 
     # 3. Process analysis objects
@@ -558,7 +650,7 @@ def _process_drs_objects_from_node(
                 # build download URL
                 host = file_obj.get("self_uri", "").split("/")[2]
                 protocol = config.DEFAULT_BASE_URL.split("://")[0]
-                download_url = f"{protocol}://{host}/drs/{DRS_OBJECTS_PATH}/{file_obj['id']}/download"
+                download_url = f"{protocol}://{host}/{config.DRS_ENDPOINT}/{file_obj['id']}/download"
 
                 file_metadata = {
                     "filename": file_obj.get("name"),
@@ -597,7 +689,7 @@ def _process_drs_objects_from_node(
                 # build download URL
                 host = file_obj.get("self_uri", "").split("/")[2]
                 protocol = config.DEFAULT_BASE_URL.split("://")[0]
-                download_url = f"{protocol}://{host}/drs/{DRS_OBJECTS_PATH}/{file_obj['id']}/download"
+                download_url = f"{protocol}://{host}/{config.DRS_ENDPOINT}/{file_obj['id']}/download"
 
                 file_metadata = {
                     "filename": file_obj.get("name"),
@@ -651,7 +743,7 @@ def collect_metadata(
         programs_to_samples.items(), desc="Processing Programs", unit="program"
     ):
         payload = {
-            "path": DRS_OBJECTS_PATH,
+            "path": config.DRS_ENDPOINT,
             "payload": {"program_id": program_id},
             "method": "GET",
             "service": config.DRS_SERVICE,

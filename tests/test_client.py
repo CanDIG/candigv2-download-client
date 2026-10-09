@@ -198,3 +198,81 @@ def test_execute_federation_call_no_injection_when_empty():
         download_helpers.execute_federation_call("http://fed/fanout", {}, payload)
     sent = mock_client.post.call_args.kwargs["json"]
     assert "exclude_servers" not in sent["payload"]
+
+
+# ---------------------------------------------------------------------------
+# select_nodes_hosting_programs (program -> node pre-selection)
+# ---------------------------------------------------------------------------
+
+
+def _programs_node(name, programs, status=200):
+    return {"location": {"name": name}, "status": status, "results": programs}
+
+
+def test_preselect_excludes_nodes_without_program():
+    responses = [
+        _programs_node("UHN", ["MOHCCN-P1-R", "MOHCCN-P2"]),
+        _programs_node("BCGSC", ["OTHER-PROG"]),
+        _programs_node("MUN", []),
+    ]
+    with patch("client.download_helpers.execute_federation_call", return_value=responses):
+        exclude, hosting = download_helpers.select_nodes_hosting_programs(
+            "http://fed/fanout", {}, ["MOHCCN-P1-R"]
+        )
+    assert hosting == {"UHN"}
+    assert exclude == ["BCGSC", "MUN"]
+
+
+def test_preselect_union_across_multiple_programs():
+    responses = [
+        _programs_node("UHN", ["MOHCCN-P1-R"]),
+        _programs_node("BCGSC", ["MOHCCN-P2"]),
+        _programs_node("MUN", ["UNRELATED"]),
+    ]
+    with patch("client.download_helpers.execute_federation_call", return_value=responses):
+        exclude, hosting = download_helpers.select_nodes_hosting_programs(
+            "http://fed/fanout", {}, ["MOHCCN-P1-R", "MOHCCN-P2"]
+        )
+    assert hosting == {"UHN", "BCGSC"}
+    assert exclude == ["MUN"]
+
+
+def test_preselect_no_program_ids_is_noop():
+    exclude, hosting = download_helpers.select_nodes_hosting_programs(
+        "http://fed/fanout", {}, None
+    )
+    assert exclude == [] and hosting == set()
+
+
+def test_preselect_falls_back_when_discovery_fails():
+    with patch("client.download_helpers.execute_federation_call", return_value=None):
+        exclude, hosting = download_helpers.select_nodes_hosting_programs(
+            "http://fed/fanout", {}, ["MOHCCN-P1-R"]
+        )
+    assert exclude == [] and hosting == set()
+
+
+def test_preselect_falls_back_when_no_node_reports_program():
+    responses = [
+        _programs_node("UHN", ["OTHER"]),
+        _programs_node("BCGSC", ["ALSO-OTHER"]),
+    ]
+    with patch("client.download_helpers.execute_federation_call", return_value=responses):
+        exclude, hosting = download_helpers.select_nodes_hosting_programs(
+            "http://fed/fanout", {}, ["MOHCCN-P1-R"]
+        )
+    assert exclude == [] and hosting == set()
+
+
+def test_preselect_ignores_errored_node_for_hosting():
+    # A node that errors (non-200) is not counted as hosting even if asked for.
+    responses = [
+        _programs_node("UHN", ["MOHCCN-P1-R"]),
+        _programs_node("BCGSC", [], status=500),
+    ]
+    with patch("client.download_helpers.execute_federation_call", return_value=responses):
+        exclude, hosting = download_helpers.select_nodes_hosting_programs(
+            "http://fed/fanout", {}, ["MOHCCN-P1-R"]
+        )
+    assert hosting == {"UHN"}
+    assert exclude == ["BCGSC"]

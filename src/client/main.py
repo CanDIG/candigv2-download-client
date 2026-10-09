@@ -65,7 +65,11 @@ def _setup_session_download(log_level, resume_path_str: Optional[str]) -> Path:
 
 # --- Helper: Beacon Search ---
 def _fetch_beacon_biosample_ids(
-    args: argparse.Namespace, headers: Dict[str, str], federation_url: str
+    args: argparse.Namespace,
+    headers: Dict[str, str],
+    federation_url: str,
+    exclude_servers: Optional[List[str]] = None,
+    protected_nodes: Optional[set] = None,
 ) -> Tuple[List[str], List[str], set]:
     logger.info("Applying genomic filters via Beacon search...")
     beacon_payload = None
@@ -85,9 +89,10 @@ def _fetch_beacon_biosample_ids(
             end=parsed_coord["end"],
         )
 
-    # Call federation nodes with beacon payload
+    # Call federation nodes with beacon payload, narrowed to the pre-selected
+    # hosting nodes when a program filter was supplied.
     beacon_results = download_helpers.execute_federation_call(
-        federation_url, headers, beacon_payload
+        federation_url, headers, beacon_payload, exclude_servers=exclude_servers
     )
     if beacon_results is None:
         logger.critical("Beacon request failed (API error or no response). Exiting.")
@@ -102,9 +107,13 @@ def _fetch_beacon_biosample_ids(
         logger.critical("Beacon search yielded 0 results. Exiting.")
         sys.exit(1)
 
-    # Narrow subsequent queries to the nodes that actually returned variant hits.
+    # Narrow subsequent queries to the nodes that actually returned variant hits,
+    # carrying forward any program pre-selection exclusions/protected nodes.
     exclude_servers, data_nodes = download_helpers.compute_servers_to_exclude(
-        beacon_results, genomics_helpers.beacon_node_has_data
+        beacon_results,
+        genomics_helpers.beacon_node_has_data,
+        existing_exclude=exclude_servers,
+        protected_nodes=protected_nodes,
     )
 
     logger.info(f"Beacon search yielded {len(program_sample_ids)} sample IDs.")
@@ -294,8 +303,22 @@ def main():
     configuration_group.add_argument(
         "-r", "--resume", type=str, help="Path to resume download session"
     )
+    configuration_group.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help=(
+            "Per-request network timeout in seconds "
+            f"(default: {config.TIMEOUT:g}). Increase this if a Beacon/gene "
+            "search times out before the server responds."
+        ),
+    )
 
     args = parser.parse_args()
+    if args.timeout is not None:
+        if args.timeout <= 0:
+            parser.error("--timeout must be a positive number of seconds.")
+        config.TIMEOUT = args.timeout
     # ===================================================
     #                   DATA PROCESSING
     # ===================================================
@@ -389,9 +412,19 @@ def main():
     exclude_servers: List[str] = []
     data_nodes: set = set()  # nodes confirmed to hold data; never excluded
     if not args.resume:
+        # When a program filter is supplied, pre-select the node(s) hosting it via
+        # a cheap DRS /programs fanout, so the expensive discovery queries below
+        # only hit the hosting node instead of fanning out to every node.
+        if args.program_id:
+            exclude_servers, data_nodes = download_helpers.select_nodes_hosting_programs(
+                federation_url, headers, args.program_id
+            )
+
         if args.gene_id or args.coord:
             new_biosample_ids, exclude_servers, data_nodes = _fetch_beacon_biosample_ids(
-                args, headers, federation_url
+                args, headers, federation_url,
+                exclude_servers=exclude_servers,
+                protected_nodes=data_nodes,
             )
 
         # Clinical processing if:
