@@ -228,6 +228,7 @@ candig-download [OUTPUT_TYPE] [FILTER]
   - `--log-level|-ll`: set the logging level (10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL). Default is INFO (20)
   - `--dry-run|-d`: If specified, shows what would be downloaded (record counts, file sizes). Note that variant dry-run downloads the clinical data for filtering purpose.
   - `--resume|-r` continue the download by locating the existing session folder
+  - `--timeout`: per-request network timeout in seconds (default 60). Increase it if a Beacon/gene search times out before the server responds (e.g. `--timeout 300`).
 
 > [!Tip]
 > Filters must be individually quoted strings.
