@@ -20,7 +20,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import httpx
 import pandas as pd
@@ -36,8 +36,11 @@ EXPERIMENT_DATA_FILENAME = "experiment_data.csv"
 ANALYSIS_DATA_FILENAME = "analysis_data.csv"
 VARIANTS_OUTPUT_PARENT_DIR_NAME = "variant_data"
 
-DRS_OBJECTS_PATH = "ga4gh/drs/v1/objects"
 SUPPORTED_EXPERIMENT_TYPES = ["wgs", "wts"]
+# drs-service v7.0.0 adds a Run schema: experiment contents now also link to
+# "raw_reads" Run objects (siblings of analyses). These are not analyses and
+# must be skipped when walking an experiment's contents.
+RUN_DESCRIPTION = "raw_reads"
 VARIANT_ANALYSIS_TYPE = "sequence_variation"
 EXPRESSION_ANALYSIS_TYPE = "sequence_annotation"
 EXPRESSION_ANALYSIS_SUBTYPE = "expression_count"
@@ -167,15 +170,31 @@ def execute_federation_call(
     federation_url: str,
     headers: Dict[str, str],
     payload: Dict[str, Any],
+    exclude_servers: Optional[List[str]] = None,
 ) -> Optional[List[Dict[str, Any]]]:
     """
     Makes a POST request to the federation endpoint and handles errors.
+
+    If ``exclude_servers`` is provided, their names are added to the inner
+    payload as a pipe-delimited ``exclude_servers`` string. The federation
+    service (>= v3.2.0) removes these nodes from the fanout, so the request is
+    only sent to the remaining nodes.
 
     Returns:
         A list of responses from federated servers, or None on failure.
     """
     service = payload.get("service", "unknown_service")
     path = payload.get("path", "N/A")
+
+    if exclude_servers:
+        inner_payload = payload.setdefault("payload", {})
+        if isinstance(inner_payload, dict):
+            inner_payload["exclude_servers"] = "|".join(exclude_servers)
+            logger.debug(
+                f"Excluding {len(exclude_servers)} node(s) from fanout for {path}: "
+                f"{exclude_servers}"
+            )
+
     logger.debug(f"Sending request to federation service for path: {path} with payload {payload}")
 
     try:
@@ -190,7 +209,7 @@ def execute_federation_call(
                     if 'failed' in node['message']:
                         logger.warning(f"Failure contacting node {node['location']['name']}")
                         logger.warning(f"Error message: {node['message']}")
-                except KeyError as e:
+                except KeyError:
                     continue
             return response.json()
     except httpx.HTTPStatusError as e:
@@ -200,7 +219,12 @@ def execute_federation_call(
         try:
             details = e.response.json()
             logger.error(f"Error details: {json.dumps(details)}")
-            if details.get("error") == "Key not authorised":
+            # Federation may return a dict OR a list of per-node error objects.
+            error_items = details if isinstance(details, list) else [details]
+            if any(
+                isinstance(item, dict) and item.get("error") == "Key not authorised"
+                for item in error_items
+            ):
                 logger.error(
                     "Authorization error: Your token may have expired. Please retry with a new token."
                 )
@@ -212,6 +236,187 @@ def execute_federation_call(
             f"Network/connection error during '{service}' request for {path}: {e}"
         )
         return None
+
+
+# ==========================================
+# === Federation node selection (routing) ===
+# ==========================================
+
+
+def _node_errored(node: Dict[str, Any]) -> bool:
+    """Return True if a federated node response indicates an error/failure."""
+    if node.get("error"):
+        return True
+    status = node.get("status")
+    if status is not None and status != 200:
+        return True
+    message = node.get("message")
+    if isinstance(message, str) and "failed" in message.lower():
+        return True
+    return False
+
+
+def classify_federation_nodes(
+    federated_results: Optional[List[Dict[str, Any]]],
+    has_data_fn: Callable[[Dict[str, Any]], bool],
+) -> Tuple[Set[str], Set[str], Set[str]]:
+    """
+    Classify the nodes in a federated response by their ``location.name``.
+
+    Returns a tuple of (contacted, with_data, errored) name sets. Nodes whose
+    response has no identifiable name are ignored (we cannot safely exclude a
+    node we cannot name).
+    """
+    contacted: Set[str] = set()
+    with_data: Set[str] = set()
+    errored: Set[str] = set()
+    if not federated_results:
+        return contacted, with_data, errored
+
+    for node in federated_results:
+        if not isinstance(node, dict):
+            continue
+        name = (node.get("location") or {}).get("name")
+        if not name:
+            continue
+        contacted.add(name)
+        if _node_errored(node):
+            errored.add(name)
+        elif has_data_fn(node):
+            with_data.add(name)
+
+    return contacted, with_data, errored
+
+
+def compute_servers_to_exclude(
+    federated_results: Optional[List[Dict[str, Any]]],
+    has_data_fn: Callable[[Dict[str, Any]], bool],
+    existing_exclude: Optional[List[str]] = None,
+    protected_nodes: Optional[Set[str]] = None,
+) -> Tuple[List[str], Set[str]]:
+    """
+    Build the list of node names to exclude from subsequent federated calls.
+
+    A node is excluded when it was contacted but returned no matching data
+    (whether because it cleanly matched nothing or because it errored). Errored
+    nodes are logged at WARNING so it is visible that their data is skipped this
+    session; cleanly empty nodes are logged at INFO.
+
+    Nodes that returned data are never excluded, and neither are ``protected_nodes``
+    -- nodes an earlier discovery step already confirmed hold matching data (e.g.
+    a node with variant hits from Beacon must not be dropped if its clinical
+    response is later empty). ``existing_exclude`` names are carried forward so
+    exclusions accumulate across discovery steps.
+
+    Returns a tuple of (exclude_list, data_nodes) where ``data_nodes`` is the
+    accumulated set of nodes confirmed to hold data (this step plus any
+    ``protected_nodes``), suitable to pass as ``protected_nodes`` to the next step.
+    """
+    exclude: Set[str] = set(existing_exclude or [])
+    contacted, with_data, errored = classify_federation_nodes(
+        federated_results, has_data_fn
+    )
+    protected: Set[str] = set(protected_nodes or []) | with_data
+
+    for name in sorted(errored - protected):
+        logger.warning(
+            f"Node '{name}' returned an error during the discovery query and will be "
+            f"excluded from subsequent queries. Data on this node will not be "
+            f"downloaded in this session."
+        )
+        exclude.add(name)
+
+    for name in sorted(contacted - protected - errored):
+        logger.info(
+            f"Node '{name}' returned no matching data; excluding it from subsequent "
+            f"queries."
+        )
+        exclude.add(name)
+
+    # A protected node must never remain excluded, even if a prior step added it.
+    exclude -= protected
+
+    return sorted(exclude), protected
+
+
+def select_nodes_hosting_programs(
+    federation_url: str,
+    headers: Dict[str, str],
+    program_ids: Optional[List[str]],
+) -> Tuple[List[str], Set[str]]:
+    """
+    Pre-select the federation nodes that host the requested program(s).
+
+    Fans out the lightweight DRS ``/programs`` query (each node returns only the
+    list of program IDs the caller is authorised to see there) and determines
+    which nodes host any of ``program_ids``. This runs *before* the expensive
+    discovery queries (Beacon, clinical) so those can be narrowed to the hosting
+    node(s) instead of fanning out to every node.
+
+    Returns a tuple of ``(exclude_servers, hosting_nodes)``:
+      - ``exclude_servers``: contacted nodes that host none of the requested
+        programs, suitable to pass straight to ``execute_federation_call`` /
+        ``compute_servers_to_exclude``.
+      - ``hosting_nodes``: nodes confirmed to hold a requested program, suitable
+        to pass as ``protected_nodes`` so they are never dropped later.
+
+    On any failure or ambiguity (discovery call failed, no node named, or no node
+    reported a requested program) it returns ``([], set())`` so callers fall back
+    to querying all nodes -- pre-selection can never make a query worse.
+    """
+    wanted = {p for p in (program_ids or []) if p}
+    if not wanted:
+        return [], set()
+
+    payload = {
+        "path": config.DRS_PROGRAM_ENDPOINT,
+        "payload": {},
+        "method": "GET",
+        "service": config.DRS_SERVICE,
+    }
+    responses = execute_federation_call(federation_url, headers, payload)
+    if not responses:
+        logger.warning(
+            "Program pre-selection: DRS /programs discovery failed; "
+            "querying all nodes."
+        )
+        return [], set()
+
+    contacted: Set[str] = set()
+    hosting: Set[str] = set()
+    for node in responses:
+        if not isinstance(node, dict):
+            continue
+        name = (node.get("location") or {}).get("name")
+        if not name:
+            continue
+        contacted.add(name)
+        if node.get("status") != 200:
+            continue
+        results = node.get("results") or []
+        node_programs = {p for p in results if isinstance(p, str)}
+        if wanted & node_programs:
+            hosting.add(name)
+
+    if not hosting:
+        logger.warning(
+            f"Program pre-selection: no node reported program(s) {sorted(wanted)}; "
+            "querying all nodes."
+        )
+        return [], set()
+
+    exclude = sorted(contacted - hosting)
+    if exclude:
+        logger.info(
+            f"Program pre-selection: program(s) {sorted(wanted)} hosted on "
+            f"{sorted(hosting)}; excluding {exclude} from discovery queries."
+        )
+    else:
+        logger.info(
+            f"Program pre-selection: program(s) {sorted(wanted)} hosted on "
+            f"{sorted(hosting)} (all contacted nodes host data)."
+        )
+    return exclude, hosting
 
 
 def download_file(
@@ -390,6 +595,10 @@ def _process_drs_objects_from_node(
     for exp_obj in experiment_objects:
         for content in exp_obj.get("contents", []):
             if analysis_obj := drs_objects_by_name.get(content.get("name")):
+                # Skip Run objects (raw reads), which now also appear in an
+                # experiment's contents alongside analyses (drs-service v7.0.0).
+                if analysis_obj.get("description") == RUN_DESCRIPTION:
+                    continue
                 analysis_objects.append(analysis_obj)
 
     # 3. Process analysis objects
@@ -441,7 +650,7 @@ def _process_drs_objects_from_node(
                 # build download URL
                 host = file_obj.get("self_uri", "").split("/")[2]
                 protocol = config.DEFAULT_BASE_URL.split("://")[0]
-                download_url = f"{protocol}://{host}/drs/{DRS_OBJECTS_PATH}/{file_obj['id']}/download"
+                download_url = f"{protocol}://{host}/{config.DRS_ENDPOINT}/{file_obj['id']}/download"
 
                 file_metadata = {
                     "filename": file_obj.get("name"),
@@ -480,7 +689,7 @@ def _process_drs_objects_from_node(
                 # build download URL
                 host = file_obj.get("self_uri", "").split("/")[2]
                 protocol = config.DEFAULT_BASE_URL.split("://")[0]
-                download_url = f"{protocol}://{host}/drs/{DRS_OBJECTS_PATH}/{file_obj['id']}/download"
+                download_url = f"{protocol}://{host}/{config.DRS_ENDPOINT}/{file_obj['id']}/download"
 
                 file_metadata = {
                     "filename": file_obj.get("name"),
@@ -513,6 +722,7 @@ def collect_metadata(
     federation_headers: Dict[str, str],
     federation_url: str,
     download_expression: bool = False,
+    exclude_servers: Optional[List[str]] = None,
 ) -> CollectedMetadata:
     """
     Collect file metadata from federated services based on program-sample IDs.
@@ -533,14 +743,14 @@ def collect_metadata(
         programs_to_samples.items(), desc="Processing Programs", unit="program"
     ):
         payload = {
-            "path": DRS_OBJECTS_PATH,
+            "path": config.DRS_ENDPOINT,
             "payload": {"program_id": program_id},
             "method": "GET",
             "service": config.DRS_SERVICE,
         }
         # this endpoint gets all objects for a program
         federated_responses = execute_federation_call(
-            federation_url, federation_headers, payload
+            federation_url, federation_headers, payload, exclude_servers=exclude_servers
         )
         if not federated_responses:
             logger.error(
@@ -803,6 +1013,7 @@ def run_variant_download_pipeline(
     federation_url: str,
     session_dir: Path,
     is_dry_run: bool = False,
+    exclude_servers: Optional[List[str]] = None,
 ) -> bool:
     """
     Main controller for the variant download pipeline.
@@ -819,7 +1030,8 @@ def run_variant_download_pipeline(
             f"PHASE 1: Collecting metadata for {len(program_sample_ids)} program-sample ID(s)..."
         )
         collected_metadata = collect_metadata(
-            program_sample_ids, federation_headers, federation_url
+            program_sample_ids, federation_headers, federation_url,
+            exclude_servers=exclude_servers,
         )
 
         # Save all collected metadata
@@ -869,6 +1081,7 @@ def run_expression_download_pipeline(
     federation_url: str,
     session_dir: Path,
     is_dry_run: bool = False,
+    exclude_servers: Optional[List[str]] = None,
 ) -> bool:
     """
     Main controller for the expression count (TSV) download pipeline.
@@ -901,6 +1114,7 @@ def run_expression_download_pipeline(
         collected_metadata = collect_metadata(
             combined_ids, federation_headers, federation_url,
             download_expression=True,
+            exclude_servers=exclude_servers,
         )
 
         expression_files = [f for f in collected_metadata.files if f.get("file_type") == "expression"]

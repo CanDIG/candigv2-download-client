@@ -57,6 +57,29 @@ def build_clinical_request_payload(
     }
 
 
+def clinical_node_has_data(node: Dict[str, Any]) -> bool:
+    """Return True if a single node's clinical response contains matching data.
+
+    Handles both normal responses (``results.data`` with non-empty category
+    lists) and dry-run responses (``results.summary.record_counts`` with at
+    least one non-zero count).
+    """
+    results = node.get("results") or {}
+
+    data = results.get("data")
+    if isinstance(data, dict):
+        for records in data.values():
+            if isinstance(records, list) and records:
+                return True
+
+    summary = results.get("summary") or {}
+    record_counts = summary.get("record_counts", {})
+    if any(count for count in record_counts.values()):
+        return True
+
+    return False
+
+
 def aggregate_clinical_results(
     clinical_federation_results: Optional[List[Dict[str, Any]]],
     is_clinical_dry_run: bool = False,

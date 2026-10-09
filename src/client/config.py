@@ -20,9 +20,11 @@ FEDERATION_PATH = "/federation/v1/fanout"
 # Genomics Service Config
 GENOMICS_SERVICE_ENDPOINT = "/genomics/htsget/v1/reads/data/"
 GENOMICS_SERVICE = "htsget"
-BEACON_ENDPOINT = "beacon/v2/g_variants"
-DRS_ENDPOINT = "ga4gh/drs/v1/objects"
-DRS_PROGRAM_ENDPOINT = "ga4gh/drs/v1/programs"
+BEACON_ENDPOINT = "genomics/beacon/v2/g_variants"
+# Federation fanout paths: forwarded as <node>/<path>, so they include the
+# "drs/" service-mount prefix (the drs-service is served under /drs).
+DRS_ENDPOINT = "drs/ga4gh/drs/v1/objects"
+DRS_PROGRAM_ENDPOINT = "drs/ga4gh/drs/v1/programs"
 DRS_SERVICE = "drs"
 EXPRESSION_ANALYSIS_TYPE = "sequence_annotation"
 EXPRESSION_ANALYSIS_SUBTYPE = "expression_count"

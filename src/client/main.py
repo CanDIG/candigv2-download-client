@@ -2,7 +2,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import datetime
 
 from client import auth
@@ -65,8 +65,12 @@ def _setup_session_download(log_level, resume_path_str: Optional[str]) -> Path:
 
 # --- Helper: Beacon Search ---
 def _fetch_beacon_biosample_ids(
-    args: argparse.Namespace, headers: Dict[str, str], federation_url: str
-) -> List[str]:
+    args: argparse.Namespace,
+    headers: Dict[str, str],
+    federation_url: str,
+    exclude_servers: Optional[List[str]] = None,
+    protected_nodes: Optional[set] = None,
+) -> Tuple[List[str], List[str], set]:
     logger.info("Applying genomic filters via Beacon search...")
     beacon_payload = None
     if args.gene_id:
@@ -85,9 +89,10 @@ def _fetch_beacon_biosample_ids(
             end=parsed_coord["end"],
         )
 
-    # Call federation nodes with beacon payload
+    # Call federation nodes with beacon payload, narrowed to the pre-selected
+    # hosting nodes when a program filter was supplied.
     beacon_results = download_helpers.execute_federation_call(
-        federation_url, headers, beacon_payload
+        federation_url, headers, beacon_payload, exclude_servers=exclude_servers
     )
     if beacon_results is None:
         logger.critical("Beacon request failed (API error or no response). Exiting.")
@@ -102,8 +107,17 @@ def _fetch_beacon_biosample_ids(
         logger.critical("Beacon search yielded 0 results. Exiting.")
         sys.exit(1)
 
+    # Narrow subsequent queries to the nodes that actually returned variant hits,
+    # carrying forward any program pre-selection exclusions/protected nodes.
+    exclude_servers, data_nodes = download_helpers.compute_servers_to_exclude(
+        beacon_results,
+        genomics_helpers.beacon_node_has_data,
+        existing_exclude=exclude_servers,
+        protected_nodes=protected_nodes,
+    )
+
     logger.info(f"Beacon search yielded {len(program_sample_ids)} sample IDs.")
-    return program_sample_ids
+    return program_sample_ids, exclude_servers, data_nodes
 
 
 # --- Helper: Clinical Data ---
@@ -113,7 +127,9 @@ def _process_clinical_data(
     federation_url: str,
     session_dir: Path,
     initial_biosample_ids: Optional[List[str]],
-) -> List[str]:
+    exclude_servers: Optional[List[str]] = None,
+    protected_nodes: Optional[set] = None,
+) -> Tuple[List[str], List[str], set]:
     print("Processing clinical data ...")
 
     clinical_payload = clinical_helpers.build_clinical_request_payload(
@@ -134,6 +150,7 @@ def _process_clinical_data(
             federation_url,
             headers,
             clinical_payload,
+            exclude_servers=exclude_servers,
         )
         if clinical_results is not None:
             pbar.update(1)
@@ -141,6 +158,16 @@ def _process_clinical_data(
     if clinical_results is None:
         logger.critical("Clinical data request failed (API error or no response). Exiting.")
         sys.exit(1)
+
+    # Refine node exclusions with the clinical response: a node holding no
+    # clinical data for this filter also holds no variant/expression data for it.
+    # Nodes already confirmed to hold data (e.g. Beacon variant hits) are protected.
+    refined_exclude, data_nodes = download_helpers.compute_servers_to_exclude(
+        clinical_results,
+        clinical_helpers.clinical_node_has_data,
+        existing_exclude=exclude_servers,
+        protected_nodes=protected_nodes,
+    )
 
     # if dry run and only clinical data is requested
     if args.dry_run and args.clinical:
@@ -164,9 +191,9 @@ def _process_clinical_data(
 
         final_ids = clinical_helpers.extract_unique_program_sample_ids_from_clinical_data(aggregated_data)
         logger.info(f"Clinical processing yielded {len(final_ids)} sample IDs for subsequent steps.")
-        return final_ids
+        return final_ids, refined_exclude, data_nodes
 
-    return []
+    return [], refined_exclude, data_nodes
 
 # --- Helper: Expression Data Processing ---
 def _process_expression_data(
@@ -175,6 +202,7 @@ def _process_expression_data(
     federation_url: str,
     session_dir: Path,
     program_sample_ids: Optional[List[str]],
+    exclude_servers: Optional[List[str]] = None,
 ):
     print("\nProcessing expression data...")
     plain_program_ids = args.program_id if not program_sample_ids else None
@@ -186,6 +214,7 @@ def _process_expression_data(
         federation_url=federation_url,
         is_dry_run=args.dry_run,
         session_dir=session_dir,
+        exclude_servers=exclude_servers,
     )
     logger.info(f"Expression data saved to: {session_dir / 'expression_data'}")
 
@@ -197,6 +226,7 @@ def _process_variant_data(
     federation_url: str,
     session_dir: Path,
     ids_for_new_metadata: Optional[List[str]],
+    exclude_servers: Optional[List[str]] = None,
 ):
     print("\nProcessing variant data...")
     download_helpers.run_variant_download_pipeline(
@@ -206,6 +236,7 @@ def _process_variant_data(
         federation_url=federation_url,
         is_dry_run=args.dry_run,
         session_dir=session_dir,
+        exclude_servers=exclude_servers,
     )
     logger.info(f"Variant data saved to: {session_dir / 'variant_data'}")
 
@@ -272,8 +303,22 @@ def main():
     configuration_group.add_argument(
         "-r", "--resume", type=str, help="Path to resume download session"
     )
+    configuration_group.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help=(
+            "Per-request network timeout in seconds "
+            f"(default: {config.TIMEOUT:g}). Increase this if a Beacon/gene "
+            "search times out before the server responds."
+        ),
+    )
 
     args = parser.parse_args()
+    if args.timeout is not None:
+        if args.timeout <= 0:
+            parser.error("--timeout must be a positive number of seconds.")
+        config.TIMEOUT = args.timeout
     # ===================================================
     #                   DATA PROCESSING
     # ===================================================
@@ -360,12 +405,26 @@ def main():
 
     federation_url = f"{config.DEFAULT_BASE_URL.rstrip('/')}{config.FEDERATION_PATH}"
 
-    # --- Biosample IDs ---
+    # --- Biosample IDs & node selection ---
+    # exclude_servers accumulates nodes to drop from the fanout as the discovery
+    # queries (beacon, clinical) reveal which nodes actually hold matching data.
     new_biosample_ids: Optional[List[str]] = None
+    exclude_servers: List[str] = []
+    data_nodes: set = set()  # nodes confirmed to hold data; never excluded
     if not args.resume:
+        # When a program filter is supplied, pre-select the node(s) hosting it via
+        # a cheap DRS /programs fanout, so the expensive discovery queries below
+        # only hit the hosting node instead of fanning out to every node.
+        if args.program_id:
+            exclude_servers, data_nodes = download_helpers.select_nodes_hosting_programs(
+                federation_url, headers, args.program_id
+            )
+
         if args.gene_id or args.coord:
-            new_biosample_ids = _fetch_beacon_biosample_ids(
-                args, headers, federation_url
+            new_biosample_ids, exclude_servers, data_nodes = _fetch_beacon_biosample_ids(
+                args, headers, federation_url,
+                exclude_servers=exclude_servers,
+                protected_nodes=data_nodes,
             )
 
         # Clinical processing if:
@@ -377,24 +436,28 @@ def main():
         should_process_clinical = args.clinical or args.all or has_clinical_filters
 
         if should_process_clinical:
-            new_biosample_ids = _process_clinical_data(
+            new_biosample_ids, exclude_servers, data_nodes = _process_clinical_data(
                 args,
                 headers,
                 federation_url,
                 session_dir,
                 initial_biosample_ids=new_biosample_ids,  # Pass IDs from beacon, if any
+                exclude_servers=exclude_servers,  # Narrow clinical fanout too
+                protected_nodes=data_nodes,  # Don't drop nodes with confirmed hits
             )
 
     # --- Variant Data Processing ---
     if args.variant or args.all:
         _process_variant_data(
-            args, headers, federation_url, session_dir, new_biosample_ids
+            args, headers, federation_url, session_dir, new_biosample_ids,
+            exclude_servers=exclude_servers,
         )
 
     # --- Expression Data Processing ---
     if args.expression or args.all:
         _process_expression_data(
-            args, headers, federation_url, session_dir, new_biosample_ids
+            args, headers, federation_url, session_dir, new_biosample_ids,
+            exclude_servers=exclude_servers,
         )
 
     logger.info(
