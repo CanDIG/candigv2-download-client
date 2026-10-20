@@ -149,8 +149,9 @@ With your virtual environment (venv) environment active, you can now install the
     ```
 2.  **Install the client locally:**
     ```bash
-    pip install .
+    pip install -e .
     ```
+    *Note: the `-e` (editable) flag is required so that changes you make to `config.py` (see [Configure CanDIG instance](#configure-candig-instance)) take effect.*
 Any notices or offers to upgrade pip may be safely ignored.
 
 ---
