@@ -25,7 +25,7 @@ def parse_coord_string(coord_string: str):
         sys.exit()
     except ValueError:
         logger.error(
-            f"Coordinate values invalid: start and end coordinates must be integers. Please ensure it follows the pattern <chrom>:<start>-<end>."
+            "Coordinate values invalid: start and end coordinates must be integers. Please ensure it follows the pattern <chrom>:<start>-<end>."
         )
         sys.exit()
     if chrom not in all_chromosomes:
@@ -79,6 +79,20 @@ def build_file_drs_request_payload(
         "method": "GET",
         "service": config.DRS_SERVICE,
     }
+
+
+def beacon_node_has_data(node: Dict[str, Any]) -> bool:
+    """Return True if a single node's Beacon response contains >= 1 sample hit."""
+    results = node.get("results")
+    if not results:
+        return False
+    estimated_results = results.get("estimatedResults", {})
+    if not estimated_results:
+        return False
+    for sample_list in estimated_results.values():
+        if isinstance(sample_list, list) and sample_list:
+            return True
+    return False
 
 
 def extract_unique_program_sample_ids_from_beacon_results(
